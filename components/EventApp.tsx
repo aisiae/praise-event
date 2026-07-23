@@ -241,7 +241,7 @@ export default function EventApp() {
               </section>
               <section className="card">
                 <h3>등록 직원 <span className="count">{admin.employees.length}</span></h3>
-                <div className="table-wrap"><table><thead><tr><th>사번</th><th>이름</th><th>상태</th></tr></thead><tbody>{admin.employees.map((employee) => <tr key={employee.id}><td>{employee.id}</td><td>{employee.name}</td><td><select value={employee.status} onChange={(e) => runAdmin({ action: "updateEmployeeStatus", employeeId: employee.id, status: e.target.value }, "상태를 변경했습니다.")}><option>재직</option><option>휴직</option><option>퇴직</option></select></td></tr>)}</tbody></table></div>
+                <div className="table-wrap"><table><thead><tr><th>이름</th><th>사번</th><th>상태</th></tr></thead><tbody>{admin.employees.map((employee) => <tr key={employee.id}><td>{employee.name}</td><td>{employee.id}</td><td><select value={employee.status} onChange={(e) => runAdmin({ action: "updateEmployeeStatus", employeeId: employee.id, status: e.target.value }, "상태를 변경했습니다.")}><option>재직</option><option>휴직</option><option>퇴직</option></select></td></tr>)}</tbody></table></div>
               </section>
             </>
           )}
