@@ -1,0 +1,62 @@
+import { FieldValue } from "firebase-admin/firestore";
+import { NextRequest, NextResponse } from "next/server";
+import { getAdminDb } from "@/lib/firebase-admin";
+import { getSettings } from "@/lib/data";
+import {
+  ACTIVE,
+  isEventOpen,
+  normalizeEmployeeId,
+  normalizeEmployeeName,
+} from "@/lib/utils";
+
+export async function POST(request: NextRequest) {
+  try {
+    const adminDb = getAdminDb();
+    const body = await request.json();
+    const writerId = normalizeEmployeeId(body.writerId);
+    const writerName = normalizeEmployeeName(body.writerName);
+    const targetId = normalizeEmployeeId(body.targetId);
+    const content = String(body.content || "").trim();
+    const settings = await getSettings();
+
+    if (!isEventOpen(settings)) throw new Error("현재 이벤트 참여 기간이 아닙니다.");
+    if (writerId === targetId) throw new Error("본인은 칭찬할 수 없습니다.");
+    if (content.replace(/\s/g, "").length < Number(settings.minChars || 20)) {
+      throw new Error(`칭찬 내용은 공백 제외 ${settings.minChars}자 이상 작성해 주세요.`);
+    }
+
+    const [writerSnap, targetSnap] = await Promise.all([
+      adminDb.collection("employees").doc(writerId).get(),
+      adminDb.collection("employees").doc(targetId).get(),
+    ]);
+    const writer = writerSnap.data();
+    const target = targetSnap.data();
+    if (!writer || writer.status !== ACTIVE || normalizeEmployeeName(writer.name) !== writerName) {
+      throw new Error("작성자 정보를 다시 확인해 주세요.");
+    }
+    if (!target || target.status !== ACTIVE) throw new Error("칭찬 대상자를 찾을 수 없습니다.");
+
+    const duplicateId = `${writerId}_${targetId}`;
+    const ref = adminDb.collection("praises").doc(duplicateId);
+    await adminDb.runTransaction(async (tx) => {
+      const duplicate = await tx.get(ref);
+      if (duplicate.exists) throw new Error("이미 해당 직원을 칭찬했습니다.");
+      tx.set(ref, {
+        writerId,
+        writerName: writer.name,
+        targetId,
+        targetName: target.name,
+        content,
+        status: "게시",
+        createdAt: FieldValue.serverTimestamp(),
+      });
+    });
+
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "칭찬을 등록하지 못했습니다." },
+      { status: 400 },
+    );
+  }
+}
