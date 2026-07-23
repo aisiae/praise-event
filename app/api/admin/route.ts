@@ -28,8 +28,8 @@ function parseEmployees(text: string) {
     .split(/\r?\n/)
     .map((line) => (line.includes("\t") ? line.split("\t") : line.split(",")))
     .map((cols) => ({
-      employeeId: normalizeEmployeeId(cols[0]),
-      name: normalizeEmployeeName(cols[1]),
+      name: normalizeEmployeeName(cols[0]),
+      employeeId: normalizeEmployeeId(cols[1]),
       status: ["재직", "휴직", "퇴직"].includes(String(cols[2] || "").trim())
         ? String(cols[2]).trim()
         : ACTIVE,

@@ -202,8 +202,8 @@ export default function EventApp() {
               <div className="admin-grid">
                 <section className="card">
                   <h3>직원 명단 일괄 등록</h3>
-                  <p className="muted">사번 · 이름 · 상태 순서로 엑셀에서 붙여넣으세요.</p>
-                  <textarea rows={8} value={employeeText} onChange={(e) => setEmployeeText(e.target.value)} placeholder={"202509004\t정지영\t재직"} />
+                  <p className="muted">이름 · 사번 · 상태 순서로 엑셀에서 붙여넣으세요.</p>
+                  <textarea rows={8} value={employeeText} onChange={(e) => setEmployeeText(e.target.value)} placeholder={"정지영\t202509004\t재직"} />
                   <button className="button primary" disabled={busy} onClick={() => runAdmin({ action: "importEmployees", text: employeeText }, "직원 명단을 등록했습니다.")}>명단 등록</button>
                 </section>
                 <section className="card">
