@@ -22,6 +22,10 @@ type Settings = {
   endDate: string;
   showResults: boolean;
   minChars: number;
+  detailSchedule: string;
+  detailAttendance: string;
+  detailPrizes: string;
+  detailNotes: string;
 };
 type StickerStatus = { attendance: number; sent: number; received: number; total: number };
 type PublicData = {
@@ -48,6 +52,10 @@ const emptyPublic: PublicData = {
     endDate: "",
     showResults: false,
     minChars: 20,
+    detailSchedule: "이벤트 기간 동안 매일 참여할 수 있으며, 추첨 결과는 이벤트 종료 후 안내합니다.",
+    detailAttendance: "이벤트 기간 중 하루 1회 로그인하면 출석 스티커 1장이 지급됩니다.\n칭찬을 작성하거나 받으면 각각 스티커 1장이 추가됩니다.",
+    detailPrizes: "보유한 스티커 수를 기준으로 가중치 추첨을 진행합니다.\n등록된 상품과 수량은 이벤트 운영 상황에 따라 변경될 수 있습니다.",
+    detailNotes: "동일한 동료에게는 한 번만 칭찬할 수 있으며, 본인에게는 칭찬을 작성할 수 없습니다.",
   },
   employees: [],
   praises: [],
@@ -101,6 +109,7 @@ export default function EventApp() {
   const [loginOpen, setLoginOpen] = useState(false);
   const [stickerOpen, setStickerOpen] = useState(false);
   const [loginResultOpen, setLoginResultOpen] = useState(false);
+  const [eventDetailOpen, setEventDetailOpen] = useState(false);
   const [attendanceAwarded, setAttendanceAwarded] = useState(false);
   const [stickerStatus, setStickerStatus] = useState<StickerStatus>(emptyStickerStatus);
   const [praiseTab, setPraiseTab] = useState<"all" | "received" | "sent">("all");
@@ -128,18 +137,19 @@ export default function EventApp() {
   }, []);
 
   useEffect(() => {
-    if (!loginOpen && !stickerOpen && !loginResultOpen && !selectedPraise) return;
+    if (!loginOpen && !stickerOpen && !loginResultOpen && !eventDetailOpen && !selectedPraise) return;
     const close = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setLoginOpen(false);
         setStickerOpen(false);
         setLoginResultOpen(false);
+        setEventDetailOpen(false);
         setSelectedPraise(null);
       }
     };
     window.addEventListener("keydown", close);
     return () => window.removeEventListener("keydown", close);
-  }, [loginOpen, stickerOpen, loginResultOpen, selectedPraise]);
+  }, [loginOpen, stickerOpen, loginResultOpen, eventDetailOpen, selectedPraise]);
 
   const filteredPraises = useMemo(() => {
     if (!user || praiseTab === "all") return data.praises;
@@ -305,7 +315,7 @@ export default function EventApp() {
             <span className="eyebrow">PRAISE & ATTENDANCE</span>
             <h1>{data.settings.eventName}</h1>
             <p>{data.settings.intro}</p>
-            <EventPeriod settings={data.settings} />
+            <div className="hero-info-actions"><EventPeriod settings={data.settings} /><button className="detail-button" onClick={() => setEventDetailOpen(true)}>상세보기 <span>→</span></button></div>
           </div>
           <div className="hero-deco" aria-hidden="true">
             <span>칭찬</span><span>♥</span><span>고마워요!</span>
@@ -367,6 +377,10 @@ export default function EventApp() {
                     <label>시작일<input type="date" value={admin.settings.startDate} onChange={(e) => setAdmin({ ...admin, settings: { ...admin.settings, startDate: e.target.value } })} /></label>
                     <label>종료일<input type="date" value={admin.settings.endDate} onChange={(e) => setAdmin({ ...admin, settings: { ...admin.settings, endDate: e.target.value } })} /></label>
                   </div>
+                  <label>일정 안내<textarea rows={3} value={admin.settings.detailSchedule} onChange={(e) => setAdmin({ ...admin, settings: { ...admin.settings, detailSchedule: e.target.value } })} /></label>
+                  <label>스티커 지급 기준<textarea rows={4} value={admin.settings.detailAttendance} onChange={(e) => setAdmin({ ...admin, settings: { ...admin.settings, detailAttendance: e.target.value } })} /></label>
+                  <label>상품 안내<textarea rows={4} value={admin.settings.detailPrizes} onChange={(e) => setAdmin({ ...admin, settings: { ...admin.settings, detailPrizes: e.target.value } })} /></label>
+                  <label>유의사항<textarea rows={3} value={admin.settings.detailNotes} onChange={(e) => setAdmin({ ...admin, settings: { ...admin.settings, detailNotes: e.target.value } })} /></label>
                   <label className="check"><input type="checkbox" checked={admin.settings.showResults} onChange={(e) => setAdmin({ ...admin, settings: { ...admin.settings, showResults: e.target.checked } })} /> 추첨 결과 공개</label>
                   <button className="button primary" disabled={busy} onClick={() => runAdmin({ action: "saveSettings", settings: admin.settings }, "설정을 저장했습니다.")}>설정 저장</button>
               </section>}
@@ -477,10 +491,10 @@ export default function EventApp() {
         </>
       )}
 
-      {(loginOpen || stickerOpen || loginResultOpen || selectedPraise) && (
+      {(loginOpen || stickerOpen || loginResultOpen || eventDetailOpen || selectedPraise) && (
         <div className="modal-backdrop" onMouseDown={(event) => {
           if (event.currentTarget === event.target) {
-            setLoginOpen(false); setStickerOpen(false); setLoginResultOpen(false); setSelectedPraise(null);
+            setLoginOpen(false); setStickerOpen(false); setLoginResultOpen(false); setEventDetailOpen(false); setSelectedPraise(null);
           }
         }}>
           {loginOpen && (
@@ -528,6 +542,20 @@ export default function EventApp() {
               <h2>To. {selectedPraise.targetName}</h2>
               <p className="praise-full-content">{selectedPraise.content}</p>
               <div className="praise-full-meta"><span>From. {selectedPraise.writerName || "익명의 동료"}</span><span>{formatDate(selectedPraise.createdAt)}</span></div>
+            </section>
+          )}
+          {eventDetailOpen && (
+            <section className="modal event-detail-modal">
+              <button className="modal-close" onClick={() => setEventDetailOpen(false)} aria-label="닫기">×</button>
+              <span className="section-label">EVENT GUIDE</span>
+              <h2>칭찬 스티커 이벤트 안내</h2>
+              <div className="event-detail-list">
+                <article><span className="detail-number">01</span><div><h3>이벤트 일정</h3><p>{data.settings.detailSchedule}</p><EventPeriod settings={data.settings} /></div></article>
+                <article><span className="detail-number">02</span><div><h3>출석 스티커 제공 기준</h3><p>{data.settings.detailAttendance}</p></div></article>
+                <article><span className="detail-number">03</span><div><h3>상품 내용</h3><p>{data.settings.detailPrizes}</p>{data.prizes.length > 0 && <ul>{data.prizes.map((prize, index) => <li key={prize.id || index}><strong>{index + 1}위</strong> {prize.name} · {prize.quantity}개</li>)}</ul>}</div></article>
+                <article><span className="detail-number">04</span><div><h3>유의사항</h3><p>{data.settings.detailNotes}</p></div></article>
+              </div>
+              <button className="button primary full" onClick={() => setEventDetailOpen(false)}>확인</button>
             </section>
           )}
         </div>

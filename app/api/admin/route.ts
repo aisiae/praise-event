@@ -150,6 +150,10 @@ export async function POST(request: NextRequest) {
         endDate: String(body.settings?.endDate || ""),
         showResults: Boolean(body.settings?.showResults),
         minChars: Math.max(10, Number(body.settings?.minChars || 20)),
+        detailSchedule: String(body.settings?.detailSchedule || ""),
+        detailAttendance: String(body.settings?.detailAttendance || ""),
+        detailPrizes: String(body.settings?.detailPrizes || ""),
+        detailNotes: String(body.settings?.detailNotes || ""),
       });
       await logAdmin("이벤트 설정 저장");
     } else if (action === "savePrizes") {
