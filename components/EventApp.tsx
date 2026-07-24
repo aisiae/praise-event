@@ -434,7 +434,7 @@ export default function EventApp() {
               <h2>우리의 따뜻한 칭찬</h2>
               <p>서로의 좋은 순간을 발견하고, 함께 나누어요.</p>
             </div>
-            <div className="wall-meta"><strong>{data.stats.praiseCount}</strong><span>개의 칭찬이 도착했어요</span></div>
+            <div className="wall-meta"><strong>{data.stats.praiseCount}</strong><span>개의 칭찬이 있어요</span></div>
           </section>
 
           {user && (
