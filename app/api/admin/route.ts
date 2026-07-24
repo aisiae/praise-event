@@ -7,11 +7,12 @@ import { ACTIVE, normalizeEmployeeId, normalizeEmployeeName, serialize } from "@
 
 async function adminData() {
   const adminDb = getAdminDb();
-  const [employees, prizes, settings, results] = await Promise.all([
+  const [employees, prizes, settings, results, standings] = await Promise.all([
     adminDb.collection("employees").orderBy("name").get(),
     adminDb.collection("prizes").orderBy("order").get(),
     getSettings(),
     adminDb.collection("drawResults").orderBy("drawnAt", "desc").get(),
+    ticketCandidates(),
   ]);
   return serialize({
     employees: employees.docs.map((doc) => {
@@ -25,6 +26,7 @@ async function adminData() {
     prizes: prizes.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
     settings,
     results: results.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
+    standings: standings.sort((a, b) => b.tickets - a.tickets || a.name.localeCompare(b.name, "ko")),
   }) as Record<string, unknown>;
 }
 
@@ -52,7 +54,7 @@ function parseEmployees(text: string) {
 async function ticketCandidates() {
   const adminDb = getAdminDb();
   const [employeesSnap, praisesSnap, attendanceSnap] = await Promise.all([
-    adminDb.collection("employees").where("status", "==", ACTIVE).get(),
+    adminDb.collection("employees").get(),
     adminDb.collection("praises").where("status", "==", "게시").get(),
     adminDb.collection("attendance").get(),
   ]);
@@ -68,10 +70,13 @@ async function ticketCandidates() {
     const id = doc.data().employeeId;
     attendance.set(id, (attendance.get(id) || 0) + 1);
   });
-  return employeesSnap.docs.map((doc) => ({
+  return employeesSnap.docs.filter((doc) => !["휴직", "퇴직"].includes(String(doc.data().status))).map((doc) => ({
     employeeId: doc.id,
     name: doc.data().name,
-    tickets: 1 + (sent.get(doc.id) || 0) + (received.get(doc.id) || 0) + (attendance.get(doc.id) || 0),
+    attendance: attendance.get(doc.id) || 0,
+    sent: sent.get(doc.id) || 0,
+    received: received.get(doc.id) || 0,
+    tickets: (sent.get(doc.id) || 0) + (received.get(doc.id) || 0) + (attendance.get(doc.id) || 0),
   }));
 }
 

@@ -37,6 +37,7 @@ type AdminData = {
   prizes: Prize[];
   settings: Settings;
   results: Array<{ id: string; prizeName: string; winnerName: string }>;
+  standings: Array<{ employeeId: string; name: string; attendance: number; sent: number; received: number; tickets: number }>;
 };
 
 const emptyPublic: PublicData = {
@@ -80,16 +81,16 @@ function EventPeriod({ settings }: { settings: Settings }) {
   );
 }
 
-function PraiseCard({ praise }: { praise: Praise }) {
+function PraiseCard({ praise, onOpen }: { praise: Praise; onOpen: () => void }) {
   return (
-    <article className="praise-card">
+    <button className="praise-card" onClick={onOpen}>
       <div className="praise-card-top">
         <span className="to-name">To. {praise.targetName}</span>
         <span className="card-date">{formatDate(praise.createdAt)}</span>
       </div>
       <p>{praise.content}</p>
       <div className="from-name">From. {praise.writerName || "익명의 동료"}</div>
-    </article>
+    </button>
   );
 }
 
@@ -100,8 +101,11 @@ export default function EventApp() {
   const [loginOpen, setLoginOpen] = useState(false);
   const [stickerOpen, setStickerOpen] = useState(false);
   const [loginResultOpen, setLoginResultOpen] = useState(false);
+  const [attendanceAwarded, setAttendanceAwarded] = useState(false);
   const [stickerStatus, setStickerStatus] = useState<StickerStatus>(emptyStickerStatus);
   const [praiseTab, setPraiseTab] = useState<"all" | "received" | "sent">("all");
+  const [selectedPraise, setSelectedPraise] = useState<Praise | null>(null);
+  const [adminTab, setAdminTab] = useState<"employees" | "settings" | "prizes" | "status" | "results">("employees");
   const [notice, setNotice] = useState("");
   const [targetId, setTargetId] = useState("");
   const [content, setContent] = useState("");
@@ -124,17 +128,18 @@ export default function EventApp() {
   }, []);
 
   useEffect(() => {
-    if (!loginOpen && !stickerOpen && !loginResultOpen) return;
+    if (!loginOpen && !stickerOpen && !loginResultOpen && !selectedPraise) return;
     const close = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setLoginOpen(false);
         setStickerOpen(false);
         setLoginResultOpen(false);
+        setSelectedPraise(null);
       }
     };
     window.addEventListener("keydown", close);
     return () => window.removeEventListener("keydown", close);
-  }, [loginOpen, stickerOpen, loginResultOpen]);
+  }, [loginOpen, stickerOpen, loginResultOpen, selectedPraise]);
 
   const filteredPraises = useMemo(() => {
     if (!user || praiseTab === "all") return data.praises;
@@ -148,6 +153,7 @@ export default function EventApp() {
     try {
       const result = await jsonFetch<{
         employee: Employee;
+        attendanceAwarded: boolean;
         attendanceMessage: string;
         stickerStatus: StickerStatus;
       }>("/api/employee/login", {
@@ -156,6 +162,7 @@ export default function EventApp() {
         body: JSON.stringify(login),
       });
       setUser(result.employee);
+      setAttendanceAwarded(result.attendanceAwarded);
       setStickerStatus(result.stickerStatus);
       setNotice(result.attendanceMessage);
       setLoginOpen(false);
@@ -244,6 +251,25 @@ export default function EventApp() {
     }
   };
 
+  useEffect(() => {
+    if (!admin || (adminTab !== "status" && adminTab !== "results")) return;
+    const timer = window.setInterval(async () => {
+      try {
+        const current = getFirebaseAuth().currentUser;
+        if (!current) return;
+        const token = await current.getIdToken();
+        const latest = await jsonFetch<AdminData>("/api/admin", {
+          headers: { Authorization: `Bearer ${token}` },
+          cache: "no-store",
+        });
+        setAdmin(latest);
+      } catch {
+        // 다음 주기에 다시 시도합니다.
+      }
+    }, 10000);
+    return () => window.clearInterval(timer);
+  }, [adminTab, admin]);
+
   const logoutEmployee = () => {
     setUser(null);
     setStickerStatus(emptyStickerStatus);
@@ -310,14 +336,30 @@ export default function EventApp() {
                 <div><span className="section-label">ADMIN CONSOLE</span><h2>이벤트 관리</h2></div>
                 <button className="button secondary" onClick={async () => { await signOut(getFirebaseAuth()); setAdmin(null); }}>로그아웃</button>
               </div>
-              <div className="admin-grid">
+              <nav className="admin-tabs" aria-label="관리자 메뉴">
+                {([
+                  ["employees", "명단 관리"],
+                  ["settings", "이벤트 설정"],
+                  ["prizes", "상품 관리"],
+                  ["status", "이벤트 현황"],
+                  ["results", "결과"],
+                ] as const).map(([id, label]) => <button key={id} className={adminTab === id ? "active" : ""} onClick={() => setAdminTab(id)}>{label}</button>)}
+              </nav>
+
+              {adminTab === "employees" && <div className="admin-grid roster-grid">
                 <section className="panel">
                   <h3>직원 명단 일괄 등록</h3>
                   <p className="muted">이름 · 사번 · 상태 순서로 붙여 넣어 주세요.</p>
                   <textarea rows={8} value={employeeText} onChange={(e) => setEmployeeText(e.target.value)} placeholder={"홍길동\t202509004\t재직"} />
                   <button className="button primary" disabled={busy} onClick={() => runAdmin({ action: "importEmployees", text: employeeText }, "직원 명단을 등록했습니다.")}>명단 등록</button>
                 </section>
-                <section className="panel">
+                <section className="panel roster-panel">
+                  <h3>등록 직원 <span className="count">{admin.employees.length}</span></h3>
+                  <div className="table-wrap"><table><thead><tr><th>이름</th><th>사번</th><th>상태</th><th>관리</th></tr></thead><tbody>{admin.employees.map((employee, index) => <tr key={employee.id}><td><input aria-label={`${employee.name} 이름`} value={employee.name} onChange={(e) => { const employees = [...admin.employees]; employees[index] = { ...employee, name: e.target.value }; setAdmin({ ...admin, employees }); }} /></td><td>{employee.id}</td><td><select value={employee.status} onChange={(e) => { const employees = [...admin.employees]; employees[index] = { ...employee, status: e.target.value }; setAdmin({ ...admin, employees }); }}><option>재직</option><option>휴직</option><option>퇴직</option></select></td><td><div className="employee-actions"><button className="table-action save" disabled={busy} onClick={() => runAdmin({ action: "updateEmployee", employeeId: employee.id, name: employee.name, status: employee.status }, "직원 정보를 수정했습니다.")}>저장</button><button className="table-action delete" disabled={busy} onClick={() => confirm(`${employee.name} 직원을 삭제할까요?`) && runAdmin({ action: "deleteEmployee", employeeId: employee.id }, "직원을 삭제했습니다.")}>삭제</button></div></td></tr>)}</tbody></table></div>
+                </section>
+              </div>}
+
+              {adminTab === "settings" && <section className="panel admin-section settings-panel">
                   <h3>이벤트 설정</h3>
                   <label>이벤트명<input value={admin.settings.eventName} onChange={(e) => setAdmin({ ...admin, settings: { ...admin.settings, eventName: e.target.value } })} /></label>
                   <label>소개 문구<input value={admin.settings.intro} onChange={(e) => setAdmin({ ...admin, settings: { ...admin.settings, intro: e.target.value } })} /></label>
@@ -327,16 +369,17 @@ export default function EventApp() {
                   </div>
                   <label className="check"><input type="checkbox" checked={admin.settings.showResults} onChange={(e) => setAdmin({ ...admin, settings: { ...admin.settings, showResults: e.target.checked } })} /> 추첨 결과 공개</label>
                   <button className="button primary" disabled={busy} onClick={() => runAdmin({ action: "saveSettings", settings: admin.settings }, "설정을 저장했습니다.")}>설정 저장</button>
-                </section>
-              </div>
-              <section className="panel admin-section">
+              </section>}
+
+              {adminTab === "prizes" && <section className="panel admin-section">
                 <div className="section-head compact">
-                  <div><h3>상품 및 추첨</h3><p className="muted">상품을 입력하고 저장한 뒤 추첨을 진행하세요.</p></div>
+                  <div><h3>상품 관리</h3><p className="muted">위에서부터 1위, 2위 순으로 상품이 나열됩니다.</p></div>
                   <button className="button secondary" onClick={() => setAdmin({ ...admin, prizes: [...admin.prizes, { name: "", amount: 0, quantity: 1 }] })}>상품 추가</button>
                 </div>
                 <div className="prize-editor">
                   {admin.prizes.map((prize, index) => (
                     <div className="prize-row" key={prize.id || index}>
+                      <span className="prize-rank">{index + 1}위</span>
                       <input aria-label="상품명" placeholder="상품명" value={prize.name} onChange={(e) => { const prizes = [...admin.prizes]; prizes[index] = { ...prize, name: e.target.value }; setAdmin({ ...admin, prizes }); }} />
                       <input aria-label="금액" type="number" placeholder="금액" value={prize.amount} onChange={(e) => { const prizes = [...admin.prizes]; prizes[index] = { ...prize, amount: Number(e.target.value) }; setAdmin({ ...admin, prizes }); }} />
                       <input aria-label="수량" type="number" min="1" value={prize.quantity} onChange={(e) => { const prizes = [...admin.prizes]; prizes[index] = { ...prize, quantity: Number(e.target.value) }; setAdmin({ ...admin, prizes }); }} />
@@ -346,14 +389,25 @@ export default function EventApp() {
                 </div>
                 <div className="actions">
                   <button className="button primary" disabled={busy} onClick={() => runAdmin({ action: "savePrizes", prizes: admin.prizes }, "상품을 저장했습니다.")}>상품 저장</button>
-                  <button className="button accent" disabled={busy} onClick={() => confirm("추첨을 진행할까요?") && runAdmin({ action: "runDraw" }, "추첨을 완료했습니다.")}>추첨 실행</button>
-                  <button className="button secondary" disabled={busy} onClick={() => confirm("추첨 결과를 삭제할까요?") && runAdmin({ action: "resetResults" }, "추첨 결과를 초기화했습니다.")}>결과 초기화</button>
                 </div>
-              </section>
-              <section className="panel admin-section">
-                <h3>등록 직원 <span className="count">{admin.employees.length}</span></h3>
-                <div className="table-wrap"><table><thead><tr><th>이름</th><th>사번</th><th>상태</th><th>관리</th></tr></thead><tbody>{admin.employees.map((employee, index) => <tr key={employee.id}><td><input aria-label={`${employee.name} 이름`} value={employee.name} onChange={(e) => { const employees = [...admin.employees]; employees[index] = { ...employee, name: e.target.value }; setAdmin({ ...admin, employees }); }} /></td><td>{employee.id}</td><td><select value={employee.status} onChange={(e) => { const employees = [...admin.employees]; employees[index] = { ...employee, status: e.target.value }; setAdmin({ ...admin, employees }); }}><option>재직</option><option>휴직</option><option>퇴직</option></select></td><td><div className="employee-actions"><button className="table-action save" disabled={busy} onClick={() => runAdmin({ action: "updateEmployee", employeeId: employee.id, name: employee.name, status: employee.status }, "직원 정보를 수정했습니다.")}>저장</button><button className="table-action delete" disabled={busy} onClick={() => confirm(`${employee.name} 직원을 삭제할까요?`) && runAdmin({ action: "deleteEmployee", employeeId: employee.id }, "직원을 삭제했습니다.")}>삭제</button></div></td></tr>)}</tbody></table></div>
-              </section>
+              </section>}
+
+              {adminTab === "status" && <section className="panel admin-section">
+                <div className="section-head compact"><div><h3>직원별 스티커 현황</h3><p className="muted">출석과 칭찬 활동을 합산한 현재 스코어입니다.</p></div><button className="button secondary" onClick={() => adminRequest()}>새로고침</button></div>
+                <div className="table-wrap"><table><thead><tr><th>순위</th><th>직원</th><th>출석</th><th>보낸 칭찬</th><th>받은 칭찬</th><th>총 스티커</th></tr></thead><tbody>{admin.standings.map((row, index) => <tr key={row.employeeId}><td>{index + 1}</td><td><strong>{row.name}</strong><small>{row.employeeId}</small></td><td>{row.attendance}</td><td>{row.sent}</td><td>{row.received}</td><td><strong className="score">{row.tickets}</strong></td></tr>)}</tbody></table></div>
+              </section>}
+
+              {adminTab === "results" && <section className="admin-result-grid admin-section">
+                <section className="panel">
+                  <div className="section-head compact"><div><h3>현재 직원 스코어</h3><p className="muted">스티커가 많은 순서입니다.</p></div><button className="button secondary" onClick={() => adminRequest()}>실시간 새로고침</button></div>
+                  <ol className="score-list">{admin.standings.map((row) => <li key={row.employeeId}><span>{row.name}</span><strong>{row.tickets}장</strong></li>)}</ol>
+                </section>
+                <section className="panel">
+                  <div className="section-head compact"><div><h3>상품 순위와 결과</h3><p className="muted">상품 순위별 추첨 결과를 확인하세요.</p></div></div>
+                  <div className="ranked-prizes">{admin.prizes.map((prize, index) => { const winners = admin.results.filter((result) => result.prizeName === prize.name); return <article key={prize.id || index}><span className="rank-badge">{index + 1}위</span><div><strong>{prize.name || "상품명 미입력"}</strong><p>{winners.length ? winners.map((winner) => winner.winnerName).join(", ") : "아직 추첨 전"}</p></div></article>; })}</div>
+                  <div className="actions"><button className="button accent" disabled={busy} onClick={() => confirm("현재 스코어로 추첨을 진행할까요?") && runAdmin({ action: "runDraw" }, "추첨을 완료했습니다.")}>추첨 실행</button><button className="button secondary" disabled={busy} onClick={() => confirm("추첨 결과를 삭제할까요?") && runAdmin({ action: "resetResults" }, "추첨 결과를 초기화했습니다.")}>결과 초기화</button></div>
+                </section>
+              </section>}
             </>
           )}
         </section>
@@ -392,7 +446,7 @@ export default function EventApp() {
           )}
 
           <section className="praise-grid">
-            {filteredPraises.length ? filteredPraises.map((praise) => <PraiseCard praise={praise} key={praise.id} />) : (
+            {filteredPraises.length ? filteredPraises.map((praise) => <PraiseCard praise={praise} onOpen={() => setSelectedPraise(praise)} key={praise.id} />) : (
               <div className="empty-state">
                 <span>💌</span>
                 <strong>아직 도착한 칭찬이 없어요</strong>
@@ -423,10 +477,10 @@ export default function EventApp() {
         </>
       )}
 
-      {(loginOpen || stickerOpen || loginResultOpen) && (
+      {(loginOpen || stickerOpen || loginResultOpen || selectedPraise) && (
         <div className="modal-backdrop" onMouseDown={(event) => {
           if (event.currentTarget === event.target) {
-            setLoginOpen(false); setStickerOpen(false); setLoginResultOpen(false);
+            setLoginOpen(false); setStickerOpen(false); setLoginResultOpen(false); setSelectedPraise(null);
           }
         }}>
           {loginOpen && (
@@ -445,9 +499,9 @@ export default function EventApp() {
             <section className="modal result-modal" aria-live="polite">
               <button className="modal-close" onClick={() => setLoginResultOpen(false)} aria-label="닫기">×</button>
               <div className="sticker-earned">★</div>
-              <span className="section-label">ATTENDANCE COMPLETE</span>
-              <h2>출석 스티커를 확인했어요!</h2>
-              <p><strong>{user?.name}님</strong>, 오늘도 칭찬 우체국에 와주셔서 고마워요.</p>
+              <span className="section-label">{attendanceAwarded ? "ATTENDANCE COMPLETE" : "WELCOME BACK"}</span>
+              <h2>{attendanceAwarded ? "출석 스티커를 받았어요!" : "오늘은 이미 지급되었어요"}</h2>
+              <p><strong>{user?.name}님</strong>, {attendanceAwarded ? "오늘도 칭찬 우체국에 와주셔서 고마워요." : "오늘의 출석 스티커는 이미 받으셨습니다."}</p>
               <div className="total-ticket"><span>현재 내 스티커</span><strong>{stickerStatus.total}장</strong></div>
               <button className="button primary full" onClick={() => setLoginResultOpen(false)}>칭찬 보러 가기</button>
             </section>
@@ -465,6 +519,15 @@ export default function EventApp() {
               </div>
               <p className="status-note">출석하고 칭찬을 주고받을 때마다 추첨 스티커가 쌓여요.</p>
               <button className="button primary full" onClick={() => setStickerOpen(false)}>확인</button>
+            </section>
+          )}
+          {selectedPraise && (
+            <section className="modal praise-modal">
+              <button className="modal-close" onClick={() => setSelectedPraise(null)} aria-label="닫기">×</button>
+              <span className="section-label">PRAISE MESSAGE</span>
+              <h2>To. {selectedPraise.targetName}</h2>
+              <p className="praise-full-content">{selectedPraise.content}</p>
+              <div className="praise-full-meta"><span>From. {selectedPraise.writerName || "익명의 동료"}</span><span>{formatDate(selectedPraise.createdAt)}</span></div>
             </section>
           )}
         </div>

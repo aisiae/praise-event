@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    let stickerStatus = { attendance: attendanceAwarded ? 1 : 0, sent: 0, received: 0, total: attendanceAwarded ? 2 : 1 };
+    let stickerStatus = { attendance: attendanceAwarded ? 1 : 0, sent: 0, received: 0, total: attendanceAwarded ? 1 : 0 };
     try {
       const [attendanceSnap, sentSnap, receivedSnap] = await Promise.all([
         adminDb.collection("attendance").where("employeeId", "==", employeeId).get(),
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
         attendance: attendanceSnap.size,
         sent,
         received,
-        total: 1 + attendanceSnap.size + sent + received,
+        total: attendanceSnap.size + sent + received,
       };
     } catch (statusError) {
       console.error("스티커 현황 조회 실패", statusError);
