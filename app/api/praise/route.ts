@@ -60,3 +60,49 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "칭찬을 등록하지 못했습니다." }, { status: 400 });
   }
 }
+
+async function requirePraiseOwner(body: Record<string, unknown>) {
+  const adminDb = getAdminDb();
+  const praiseId = String(body.praiseId || "");
+  const writerId = normalizeEmployeeId(body.writerId);
+  const writerName = normalizeEmployeeName(body.writerName);
+  const [praiseSnap, employeeSnap] = await Promise.all([
+    adminDb.collection("praises").doc(praiseId).get(),
+    adminDb.collection("employees").doc(writerId).get(),
+  ]);
+  const praise = praiseSnap.data();
+  const employee = employeeSnap.data();
+  if (!praiseSnap.exists || !praise || praise.writerId !== writerId) throw new Error("작성한 칭찬글을 찾을 수 없습니다.");
+  if (!employee || normalizeEmployeeName(employee.name) !== writerName) throw new Error("작성자 정보를 확인해 주세요.");
+  return { adminDb, praiseId, praise };
+}
+
+export async function PATCH(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { adminDb, praiseId } = await requirePraiseOwner(body);
+    const content = String(body.content || "").trim();
+    const settings = await getSettings();
+    if (content.replace(/\s/g, "").length < Number(settings.minChars || 20)) {
+      throw new Error(`칭찬 내용은 공백 제외 ${settings.minChars}자 이상 작성해 주세요.`);
+    }
+    await adminDb.collection("praises").doc(praiseId).update({
+      content,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    return NextResponse.json({ ok: true, content });
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "칭찬글을 수정하지 못했습니다." }, { status: 400 });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { adminDb, praiseId } = await requirePraiseOwner(body);
+    await adminDb.collection("praises").doc(praiseId).delete();
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "칭찬글을 삭제하지 못했습니다." }, { status: 400 });
+  }
+}

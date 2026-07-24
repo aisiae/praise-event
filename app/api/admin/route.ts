@@ -7,12 +7,13 @@ import { ACTIVE, normalizeEmployeeId, normalizeEmployeeName, serialize } from "@
 
 async function adminData() {
   const adminDb = getAdminDb();
-  const [employees, prizes, settings, results, standings] = await Promise.all([
+  const [employees, prizes, settings, results, standings, praises] = await Promise.all([
     adminDb.collection("employees").orderBy("name").get(),
     adminDb.collection("prizes").orderBy("order").get(),
     getSettings(),
     adminDb.collection("drawResults").orderBy("drawnAt", "desc").get(),
     ticketCandidates(),
+    adminDb.collection("praises").orderBy("createdAt", "desc").get(),
   ]);
   return serialize({
     employees: employees.docs.map((doc) => {
@@ -27,6 +28,7 @@ async function adminData() {
     settings,
     results: results.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
     standings: standings.sort((a, b) => b.tickets - a.tickets || a.name.localeCompare(b.name, "ko")),
+    praises: praises.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
   }) as Record<string, unknown>;
 }
 
@@ -142,6 +144,11 @@ export async function POST(request: NextRequest) {
       if (!employeeId) throw new Error("삭제할 직원을 확인해 주세요.");
       await adminDb.collection("employees").doc(employeeId).delete();
       await logAdmin("직원 삭제", employeeId);
+    } else if (action === "deletePraise") {
+      const praiseId = String(body.praiseId || "");
+      if (!praiseId) throw new Error("삭제할 게시글을 확인해 주세요.");
+      await adminDb.collection("praises").doc(praiseId).delete();
+      await logAdmin("칭찬 게시글 삭제", praiseId);
     } else if (action === "saveSettings") {
       await adminDb.doc("config/settings").set({
         eventName: String(body.settings?.eventName || "칭찬 스티커 이벤트"),

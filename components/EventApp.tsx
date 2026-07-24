@@ -42,6 +42,7 @@ type AdminData = {
   settings: Settings;
   results: Array<{ id: string; prizeName: string; winnerName: string }>;
   standings: Array<{ employeeId: string; name: string; attendance: number; sent: number; received: number; tickets: number }>;
+  praises: Praise[];
 };
 
 const emptyPublic: PublicData = {
@@ -116,7 +117,9 @@ export default function EventApp() {
   const [receivedPraises, setReceivedPraises] = useState<Praise[]>([]);
   const [sentPraises, setSentPraises] = useState<Praise[]>([]);
   const [selectedPraise, setSelectedPraise] = useState<Praise | null>(null);
-  const [adminTab, setAdminTab] = useState<"employees" | "settings" | "prizes" | "status" | "results">("employees");
+  const [editPraiseContent, setEditPraiseContent] = useState("");
+  const [editingPraise, setEditingPraise] = useState(false);
+  const [adminTab, setAdminTab] = useState<"employees" | "settings" | "prizes" | "posts" | "status" | "results">("employees");
   const [notice, setNotice] = useState("");
   const [targetId, setTargetId] = useState("");
   const [content, setContent] = useState("");
@@ -214,6 +217,48 @@ export default function EventApp() {
       await refresh();
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "칭찬을 등록하지 못했습니다.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const updateMyPraise = async () => {
+    if (!user || !selectedPraise) return;
+    setBusy(true);
+    try {
+      await jsonFetch("/api/praise", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ praiseId: selectedPraise.id, writerId: user.employeeId, writerName: user.name, content: editPraiseContent }),
+      });
+      setSentPraises((items) => items.map((item) => item.id === selectedPraise.id ? { ...item, content: editPraiseContent.trim() } : item));
+      setSelectedPraise({ ...selectedPraise, content: editPraiseContent.trim() });
+      setEditingPraise(false);
+      setNotice("칭찬글을 수정했습니다.");
+      await refresh();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "칭찬글을 수정하지 못했습니다.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const deleteMyPraise = async () => {
+    if (!user || !selectedPraise || !confirm("작성한 칭찬글을 삭제할까요?")) return;
+    setBusy(true);
+    try {
+      await jsonFetch("/api/praise", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ praiseId: selectedPraise.id, writerId: user.employeeId, writerName: user.name }),
+      });
+      setSentPraises((items) => items.filter((item) => item.id !== selectedPraise.id));
+      setStickerStatus((status) => ({ ...status, sent: Math.max(0, status.sent - 1), total: Math.max(0, status.total - 1) }));
+      setSelectedPraise(null);
+      setNotice("칭찬글을 삭제했습니다.");
+      await refresh();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "칭찬글을 삭제하지 못했습니다.");
     } finally {
       setBusy(false);
     }
@@ -359,6 +404,7 @@ export default function EventApp() {
                   ["employees", "명단 관리"],
                   ["settings", "이벤트 설정"],
                   ["prizes", "상품 관리"],
+                  ["posts", "게시글 관리"],
                   ["status", "이벤트 현황"],
                   ["results", "결과"],
                 ] as const).map(([id, label]) => <button key={id} className={adminTab === id ? "active" : ""} onClick={() => setAdminTab(id)}>{label}</button>)}
@@ -414,6 +460,11 @@ export default function EventApp() {
                 </div>
               </section>}
 
+              {adminTab === "posts" && <section className="panel admin-section">
+                <div className="section-head compact"><div><h3>게시글 관리</h3><p className="muted">게시된 칭찬 내용을 확인하고 필요한 경우 삭제할 수 있습니다.</p></div><span className="count">{admin.praises.length}</span></div>
+                <div className="admin-post-list">{admin.praises.map((praise) => <article key={praise.id}><div><strong>To. {praise.targetName}</strong><span>From. {praise.writerName}</span><p>{praise.content}</p></div><button className="table-action delete" disabled={busy} onClick={() => confirm("이 칭찬 게시글을 삭제할까요?") && runAdmin({ action: "deletePraise", praiseId: praise.id }, "게시글을 삭제했습니다.")}>삭제</button></article>)}</div>
+              </section>}
+
               {adminTab === "status" && <section className="panel admin-section">
                 <div className="section-head compact"><div><h3>직원별 스티커 현황</h3><p className="muted">출석과 칭찬 활동을 합산한 현재 스코어입니다.</p></div><button className="button secondary" onClick={() => adminRequest()}>새로고침</button></div>
                 <div className="table-wrap"><table><thead><tr><th>순위</th><th>직원</th><th>출석</th><th>보낸 칭찬</th><th>받은 칭찬</th><th>총 스티커</th></tr></thead><tbody>{admin.standings.map((row, index) => <tr key={row.employeeId}><td>{index + 1}</td><td><strong>{row.name}</strong><small>{row.employeeId}</small></td><td>{row.attendance}</td><td>{row.sent}</td><td>{row.received}</td><td><strong className="score">{row.tickets}</strong></td></tr>)}</tbody></table></div>
@@ -425,9 +476,8 @@ export default function EventApp() {
                   <ol className="score-list">{admin.standings.map((row) => <li key={row.employeeId}><span>{row.name}</span><strong>{row.tickets}장</strong></li>)}</ol>
                 </section>
                 <section className="panel">
-                  <div className="section-head compact"><div><h3>상품 순위와 결과</h3><p className="muted">상품 순위별 추첨 결과를 확인하세요.</p></div></div>
-                  <div className="ranked-prizes">{admin.prizes.map((prize, index) => { const winners = admin.results.filter((result) => result.prizeName === prize.name); return <article key={prize.id || index}><span className="rank-badge">{index + 1}위</span><div><strong>{prize.name || "상품명 미입력"}</strong><p>{winners.length ? winners.map((winner) => winner.winnerName).join(", ") : "아직 추첨 전"}</p></div></article>; })}</div>
-                  <div className="actions"><button className="button accent" disabled={busy} onClick={() => confirm("현재 스코어로 추첨을 진행할까요?") && runAdmin({ action: "runDraw" }, "추첨을 완료했습니다.")}>추첨 실행</button><button className="button secondary" disabled={busy} onClick={() => confirm("추첨 결과를 삭제할까요?") && runAdmin({ action: "resetResults" }, "추첨 결과를 초기화했습니다.")}>결과 초기화</button></div>
+                  <div className="section-head compact"><div><h3>실시간 상품 순위</h3><p className="muted">스티커 스코어가 바뀌면 직원 순위도 자동으로 변경됩니다.</p></div></div>
+                  <div className="ranked-prizes">{admin.prizes.flatMap((prize) => Array.from({ length: Math.max(1, prize.quantity) }, () => prize)).map((prize, index) => { const employee = admin.standings[index]; return <article key={`${prize.id || prize.name}-${index}`}><span className="rank-badge">{index + 1}위</span><div className="live-rank-info"><strong>{prize.name || "상품명 미입력"} {prize.amount > 0 && `${prize.amount.toLocaleString("ko-KR")}원`}</strong><p>{employee ? `${employee.name} · ${employee.tickets}장` : "해당 순위 직원 없음"}</p></div></article>; })}</div>
                 </section>
               </section>}
             </>
@@ -468,7 +518,7 @@ export default function EventApp() {
           )}
 
           <section className="praise-grid">
-            {filteredPraises.length ? filteredPraises.map((praise) => <PraiseCard praise={praise} showWriter={Boolean(user && praiseTab === "received")} onOpen={() => setSelectedPraise(praise)} key={praise.id} />) : (
+            {filteredPraises.length ? filteredPraises.map((praise) => <PraiseCard praise={praise} showWriter={Boolean(user && praiseTab === "received")} onOpen={() => { setSelectedPraise(praise); setEditPraiseContent(praise.content); setEditingPraise(false); }} key={praise.id} />) : (
               <div className="empty-state">
                 <span>💌</span>
                 <strong>아직 도착한 칭찬이 없어요</strong>
@@ -548,8 +598,9 @@ export default function EventApp() {
               <button className="modal-close" onClick={() => setSelectedPraise(null)} aria-label="닫기">×</button>
               <span className="section-label">PRAISE MESSAGE</span>
               <h2>To. {selectedPraise.targetName}</h2>
-              <p className="praise-full-content">{selectedPraise.content}</p>
+              {editingPraise ? <textarea className="praise-edit-textarea" rows={8} value={editPraiseContent} onChange={(e) => setEditPraiseContent(e.target.value)} /> : <p className="praise-full-content">{selectedPraise.content}</p>}
               <div className="praise-full-meta">{user && praiseTab === "received" && selectedPraise.writerName && <span>From. {selectedPraise.writerName}</span>}<span>{formatDate(selectedPraise.createdAt)}</span></div>
+              {user && praiseTab === "sent" && <div className="praise-owner-actions">{editingPraise ? <><button className="button secondary" onClick={() => { setEditingPraise(false); setEditPraiseContent(selectedPraise.content); }}>취소</button><button className="button primary" disabled={busy} onClick={updateMyPraise}>수정 저장</button></> : <><button className="button secondary" onClick={() => setEditingPraise(true)}>수정</button><button className="button danger" disabled={busy} onClick={deleteMyPraise}>삭제</button></>}</div>}
             </section>
           )}
           {eventDetailOpen && (
