@@ -14,7 +14,14 @@ async function adminData() {
     adminDb.collection("drawResults").orderBy("drawnAt", "desc").get(),
   ]);
   return serialize({
-    employees: employees.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
+    employees: employees.docs.map((doc) => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        ...data,
+        status: ["재직", "휴직", "퇴직"].includes(String(data.status)) ? data.status : ACTIVE,
+      };
+    }),
     prizes: prizes.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
     settings,
     results: results.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
@@ -113,6 +120,23 @@ export async function POST(request: NextRequest) {
       if (!["재직", "휴직", "퇴직"].includes(status)) throw new Error("올바른 상태가 아닙니다.");
       await adminDb.collection("employees").doc(employeeId).update({ status, updatedAt: FieldValue.serverTimestamp() });
       await logAdmin("직원 상태 변경", employeeId, status);
+    } else if (action === "updateEmployee") {
+      const employeeId = normalizeEmployeeId(body.employeeId);
+      const name = normalizeEmployeeName(body.name);
+      const status = String(body.status || "");
+      if (!employeeId || !name) throw new Error("이름과 사번을 확인해 주세요.");
+      if (!["재직", "휴직", "퇴직"].includes(status)) throw new Error("올바른 상태가 아닙니다.");
+      await adminDb.collection("employees").doc(employeeId).update({
+        name,
+        status,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      await logAdmin("직원 정보 수정", employeeId, `${name} / ${status}`);
+    } else if (action === "deleteEmployee") {
+      const employeeId = normalizeEmployeeId(body.employeeId);
+      if (!employeeId) throw new Error("삭제할 직원을 확인해 주세요.");
+      await adminDb.collection("employees").doc(employeeId).delete();
+      await logAdmin("직원 삭제", employeeId);
     } else if (action === "saveSettings") {
       await adminDb.doc("config/settings").set({
         eventName: String(body.settings?.eventName || "칭찬 스티커 이벤트"),

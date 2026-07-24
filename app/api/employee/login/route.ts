@@ -15,7 +15,9 @@ export async function POST(request: NextRequest) {
     const ref = adminDb.collection("employees").doc(employeeId);
     const snap = await ref.get();
     const employee = snap.data();
-    if (!snap.exists || !employee || normalizeEmployeeName(employee.name) !== name || employee.status !== ACTIVE) {
+    const employeeStatus = String(employee?.status || ACTIVE).normalize("NFC").trim();
+    const inactive = employeeStatus === "휴직" || employeeStatus === "퇴직";
+    if (!snap.exists || !employee || normalizeEmployeeName(employee.name) !== name || inactive) {
       throw new Error("이름과 사번이 일치하지 않거나 재직 대상자가 아닙니다.");
     }
 
@@ -35,19 +37,24 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const [attendanceSnap, sentSnap, receivedSnap] = await Promise.all([
-      adminDb.collection("attendance").where("employeeId", "==", employeeId).get(),
-      adminDb.collection("praises").where("writerId", "==", employeeId).get(),
-      adminDb.collection("praises").where("targetId", "==", employeeId).get(),
-    ]);
-    const sent = sentSnap.docs.filter((doc) => doc.data().status === "게시").length;
-    const received = receivedSnap.docs.filter((doc) => doc.data().status === "게시").length;
-    const stickerStatus = {
-      attendance: attendanceSnap.size,
-      sent,
-      received,
-      total: 1 + attendanceSnap.size + sent + received,
-    };
+    let stickerStatus = { attendance: attendanceAwarded ? 1 : 0, sent: 0, received: 0, total: attendanceAwarded ? 2 : 1 };
+    try {
+      const [attendanceSnap, sentSnap, receivedSnap] = await Promise.all([
+        adminDb.collection("attendance").where("employeeId", "==", employeeId).get(),
+        adminDb.collection("praises").where("writerId", "==", employeeId).get(),
+        adminDb.collection("praises").where("targetId", "==", employeeId).get(),
+      ]);
+      const sent = sentSnap.docs.filter((doc) => doc.data().status === "게시").length;
+      const received = receivedSnap.docs.filter((doc) => doc.data().status === "게시").length;
+      stickerStatus = {
+        attendance: attendanceSnap.size,
+        sent,
+        received,
+        total: 1 + attendanceSnap.size + sent + received,
+      };
+    } catch (statusError) {
+      console.error("스티커 현황 조회 실패", statusError);
+    }
 
     return NextResponse.json({
       employee: { employeeId, name: employee.name },
