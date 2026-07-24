@@ -1,11 +1,20 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { signInWithEmailAndPassword, signOut } from "firebase/auth";
 import { getFirebaseAuth } from "@/lib/firebase-client";
 
 type Employee = { id?: string; employeeId?: string; name: string; status?: string };
 type Prize = { id?: string; name: string; amount: number; quantity: number; active?: boolean };
+type Praise = {
+  id: string;
+  writerId?: string;
+  writerName?: string;
+  targetId?: string;
+  targetName: string;
+  content: string;
+  createdAt?: string;
+};
 type Settings = {
   eventName: string;
   intro: string;
@@ -14,10 +23,11 @@ type Settings = {
   showResults: boolean;
   minChars: number;
 };
+type StickerStatus = { attendance: number; sent: number; received: number; total: number };
 type PublicData = {
   settings: Settings;
   employees: Employee[];
-  praises: Array<{ id: string; targetName: string; content: string; createdAt?: string }>;
+  praises: Praise[];
   prizes: Prize[];
   results: Array<{ id: string; prizeName: string; winnerName: string }>;
   stats: { employeeCount: number; praiseCount: number; todayAttendance: number };
@@ -32,7 +42,7 @@ type AdminData = {
 const emptyPublic: PublicData = {
   settings: {
     eventName: "칭찬 스티커 이벤트",
-    intro: "동료에게 따뜻한 칭찬을 전해 보세요.",
+    intro: "동료에게 따뜻한 칭찬을 전하고 행운의 주인공이 되어 보세요.",
     startDate: "",
     endDate: "",
     showResults: false,
@@ -45,17 +55,53 @@ const emptyPublic: PublicData = {
   stats: { employeeCount: 0, praiseCount: 0, todayAttendance: 0 },
 };
 
+const emptyStickerStatus: StickerStatus = { attendance: 0, sent: 0, received: 0, total: 0 };
+
 async function jsonFetch<T>(url: string, options?: RequestInit): Promise<T> {
   const response = await fetch(url, options);
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error || "요청을 처리하지 못했습니다.");
-  return data;
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || "요청을 처리하지 못했습니다.");
+  return result;
+}
+
+function formatDate(value?: string) {
+  if (!value) return "";
+  return new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric" }).format(new Date(value));
+}
+
+function EventPeriod({ settings }: { settings: Settings }) {
+  if (!settings.startDate && !settings.endDate) return null;
+  return (
+    <span className="event-period">
+      <span aria-hidden="true">●</span>
+      {settings.startDate ? formatDate(settings.startDate) : "시작일 미정"} —{" "}
+      {settings.endDate ? formatDate(settings.endDate) : "종료일 미정"}
+    </span>
+  );
+}
+
+function PraiseCard({ praise }: { praise: Praise }) {
+  return (
+    <article className="praise-card">
+      <div className="praise-card-top">
+        <span className="to-name">To. {praise.targetName}</span>
+        <span className="card-date">{formatDate(praise.createdAt)}</span>
+      </div>
+      <p>{praise.content}</p>
+      <div className="from-name">From. {praise.writerName || "익명의 동료"}</div>
+    </article>
+  );
 }
 
 export default function EventApp() {
   const [data, setData] = useState<PublicData>(emptyPublic);
   const [user, setUser] = useState<Employee | null>(null);
   const [login, setLogin] = useState({ name: "", employeeId: "" });
+  const [loginOpen, setLoginOpen] = useState(false);
+  const [stickerOpen, setStickerOpen] = useState(false);
+  const [loginResultOpen, setLoginResultOpen] = useState(false);
+  const [stickerStatus, setStickerStatus] = useState<StickerStatus>(emptyStickerStatus);
+  const [praiseTab, setPraiseTab] = useState<"all" | "received" | "sent">("all");
   const [notice, setNotice] = useState("");
   const [targetId, setTargetId] = useState("");
   const [content, setContent] = useState("");
@@ -65,28 +111,50 @@ export default function EventApp() {
   const [employeeText, setEmployeeText] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const refresh = async () => {
-    setData(await jsonFetch<PublicData>("/api/public", { cache: "no-store" }));
-  };
+  const refresh = async () => setData(await jsonFetch<PublicData>("/api/public", { cache: "no-store" }));
 
   useEffect(() => {
     refresh().catch((error) => setNotice(error.message));
   }, []);
 
+  useEffect(() => {
+    if (!loginOpen && !stickerOpen && !loginResultOpen) return;
+    const close = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setLoginOpen(false);
+        setStickerOpen(false);
+        setLoginResultOpen(false);
+      }
+    };
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, [loginOpen, stickerOpen, loginResultOpen]);
+
+  const filteredPraises = useMemo(() => {
+    if (!user || praiseTab === "all") return data.praises;
+    if (praiseTab === "received") return data.praises.filter((item) => item.targetId === user.employeeId);
+    return data.praises.filter((item) => item.writerId === user.employeeId);
+  }, [data.praises, praiseTab, user]);
+
   const employeeLogin = async (event: FormEvent) => {
     event.preventDefault();
     setBusy(true);
     try {
-      const result = await jsonFetch<{ employee: Employee; attendanceMessage: string }>(
-        "/api/employee/login",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(login),
-        },
-      );
+      const result = await jsonFetch<{
+        employee: Employee;
+        attendanceMessage: string;
+        stickerStatus: StickerStatus;
+      }>("/api/employee/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(login),
+      });
       setUser(result.employee);
+      setStickerStatus(result.stickerStatus);
       setNotice(result.attendanceMessage);
+      setLoginOpen(false);
+      setLoginResultOpen(true);
+      setPraiseTab("received");
       await refresh();
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "로그인하지 못했습니다.");
@@ -112,7 +180,8 @@ export default function EventApp() {
       });
       setTargetId("");
       setContent("");
-      setNotice("칭찬이 등록되었습니다.");
+      setNotice("따뜻한 칭찬이 등록되었습니다.");
+      setStickerStatus((status) => ({ ...status, sent: status.sent + 1, total: status.total + 1 }));
       await refresh();
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "칭찬을 등록하지 못했습니다.");
@@ -164,18 +233,48 @@ export default function EventApp() {
     }
   };
 
+  const logoutEmployee = () => {
+    setUser(null);
+    setStickerStatus(emptyStickerStatus);
+    setPraiseTab("all");
+  };
+
   return (
     <main>
-      <header className="hero">
-        <div>
-          <span className="eyebrow">PRAISE & ATTENDANCE</span>
-          <h1>{data.settings.eventName}</h1>
-          <p>{data.settings.intro}</p>
-        </div>
-        <button className="button ghost" onClick={() => setAdminOpen((value) => !value)}>
-          {adminOpen ? "직원 화면" : "관리자"}
+      <header className="topbar">
+        <button className="brand" onClick={() => setAdminOpen(false)} aria-label="메인 화면으로">
+          <span className="brand-mark">칭</span>
+          <span>칭찬 우체국</span>
         </button>
+        <div className="top-actions">
+          {user && (
+            <>
+              <span className="user-chip">{user.name}님</span>
+              <button className="button status-button" onClick={() => setStickerOpen(true)}>
+                <span aria-hidden="true">★</span> 내 스티커 현황
+              </button>
+              <button className="text-button" onClick={logoutEmployee}>로그아웃</button>
+            </>
+          )}
+          <button className="admin-link" onClick={() => setAdminOpen((value) => !value)}>
+            {adminOpen ? "이벤트 화면" : "관리자"}
+          </button>
+        </div>
       </header>
+
+      {!adminOpen && (
+        <section className="hero">
+          <div className="hero-copy">
+            <span className="eyebrow">PRAISE & ATTENDANCE</span>
+            <h1>{data.settings.eventName}</h1>
+            <p>{data.settings.intro}</p>
+            <EventPeriod settings={data.settings} />
+          </div>
+          <div className="hero-deco" aria-hidden="true">
+            <span>칭찬</span><span>♥</span><span>고마워요!</span>
+          </div>
+        </section>
+      )}
 
       {notice && (
         <button className="notice" onClick={() => setNotice("")} aria-label="알림 닫기">
@@ -186,7 +285,7 @@ export default function EventApp() {
       {adminOpen ? (
         <section className="admin-area">
           {!admin ? (
-            <form className="card narrow" onSubmit={loginAdmin}>
+            <form className="panel narrow" onSubmit={loginAdmin}>
               <span className="section-label">ADMIN</span>
               <h2>관리자 로그인</h2>
               <label>이메일<input type="email" value={adminLogin.email} onChange={(e) => setAdminLogin({ ...adminLogin, email: e.target.value })} required /></label>
@@ -197,16 +296,16 @@ export default function EventApp() {
             <>
               <div className="section-head">
                 <div><span className="section-label">ADMIN CONSOLE</span><h2>이벤트 관리</h2></div>
-                <button className="button ghost dark" onClick={async () => { await signOut(getFirebaseAuth()); setAdmin(null); }}>로그아웃</button>
+                <button className="button secondary" onClick={async () => { await signOut(getFirebaseAuth()); setAdmin(null); }}>로그아웃</button>
               </div>
               <div className="admin-grid">
-                <section className="card">
+                <section className="panel">
                   <h3>직원 명단 일괄 등록</h3>
-                  <p className="muted">이름 · 사번 · 상태 순서로 엑셀에서 붙여넣으세요.</p>
-                  <textarea rows={8} value={employeeText} onChange={(e) => setEmployeeText(e.target.value)} placeholder={"정지영\t202509004\t재직"} />
+                  <p className="muted">이름 · 사번 · 상태 순서로 붙여 넣어 주세요.</p>
+                  <textarea rows={8} value={employeeText} onChange={(e) => setEmployeeText(e.target.value)} placeholder={"홍길동\t202509004\t재직"} />
                   <button className="button primary" disabled={busy} onClick={() => runAdmin({ action: "importEmployees", text: employeeText }, "직원 명단을 등록했습니다.")}>명단 등록</button>
                 </section>
-                <section className="card">
+                <section className="panel">
                   <h3>이벤트 설정</h3>
                   <label>이벤트명<input value={admin.settings.eventName} onChange={(e) => setAdmin({ ...admin, settings: { ...admin.settings, eventName: e.target.value } })} /></label>
                   <label>소개 문구<input value={admin.settings.intro} onChange={(e) => setAdmin({ ...admin, settings: { ...admin.settings, intro: e.target.value } })} /></label>
@@ -218,10 +317,10 @@ export default function EventApp() {
                   <button className="button primary" disabled={busy} onClick={() => runAdmin({ action: "saveSettings", settings: admin.settings }, "설정을 저장했습니다.")}>설정 저장</button>
                 </section>
               </div>
-              <section className="card">
+              <section className="panel admin-section">
                 <div className="section-head compact">
-                  <div><h3>상품 및 추첨</h3><p className="muted">상품을 입력한 뒤 저장하고 추첨을 실행하세요.</p></div>
-                  <button className="button ghost dark" onClick={() => setAdmin({ ...admin, prizes: [...admin.prizes, { name: "", amount: 0, quantity: 1 }] })}>상품 추가</button>
+                  <div><h3>상품 및 추첨</h3><p className="muted">상품을 입력하고 저장한 뒤 추첨을 진행하세요.</p></div>
+                  <button className="button secondary" onClick={() => setAdmin({ ...admin, prizes: [...admin.prizes, { name: "", amount: 0, quantity: 1 }] })}>상품 추가</button>
                 </div>
                 <div className="prize-editor">
                   {admin.prizes.map((prize, index) => (
@@ -235,56 +334,128 @@ export default function EventApp() {
                 </div>
                 <div className="actions">
                   <button className="button primary" disabled={busy} onClick={() => runAdmin({ action: "savePrizes", prizes: admin.prizes }, "상품을 저장했습니다.")}>상품 저장</button>
-                  <button className="button accent" disabled={busy} onClick={() => confirm("추첨을 실행할까요?") && runAdmin({ action: "runDraw" }, "추첨이 완료되었습니다.")}>추첨 실행</button>
-                  <button className="button ghost dark" disabled={busy} onClick={() => confirm("추첨 결과를 삭제할까요?") && runAdmin({ action: "resetResults" }, "추첨 결과를 초기화했습니다.")}>결과 초기화</button>
+                  <button className="button accent" disabled={busy} onClick={() => confirm("추첨을 진행할까요?") && runAdmin({ action: "runDraw" }, "추첨을 완료했습니다.")}>추첨 실행</button>
+                  <button className="button secondary" disabled={busy} onClick={() => confirm("추첨 결과를 삭제할까요?") && runAdmin({ action: "resetResults" }, "추첨 결과를 초기화했습니다.")}>결과 초기화</button>
                 </div>
               </section>
-              <section className="card">
+              <section className="panel admin-section">
                 <h3>등록 직원 <span className="count">{admin.employees.length}</span></h3>
                 <div className="table-wrap"><table><thead><tr><th>이름</th><th>사번</th><th>상태</th></tr></thead><tbody>{admin.employees.map((employee) => <tr key={employee.id}><td>{employee.name}</td><td>{employee.id}</td><td><select value={employee.status} onChange={(e) => runAdmin({ action: "updateEmployeeStatus", employeeId: employee.id, status: e.target.value }, "상태를 변경했습니다.")}><option>재직</option><option>휴직</option><option>퇴직</option></select></td></tr>)}</tbody></table></div>
               </section>
             </>
           )}
         </section>
-      ) : !user ? (
-        <section className="login-stage">
-          <form className="card narrow" onSubmit={employeeLogin}>
-            <span className="section-label">WELCOME</span>
-            <h2>직원 로그인</h2>
-            <p className="muted">재직 중인 직원만 이용할 수 있습니다.</p>
-            <label>이름<input value={login.name} onChange={(e) => setLogin({ ...login, name: e.target.value })} required /></label>
-            <label>사번<input inputMode="numeric" value={login.employeeId} onChange={(e) => setLogin({ ...login, employeeId: e.target.value })} required /></label>
-            <button className="button primary" disabled={busy}>입장하고 출석 스티커 받기</button>
-          </form>
-        </section>
       ) : (
         <>
-          <section className="welcome-row">
-            <div><span className="section-label">HELLO</span><h2>{user.name}님, 오늘도 반갑습니다.</h2></div>
-            <button className="button ghost dark" onClick={() => setUser(null)}>로그아웃</button>
+          <section className="entry-strip">
+            <div className="entry-message">
+              <span className="entry-icon">★</span>
+              <div>
+                <strong>{user ? `${user.name}님, 오늘도 반가워요!` : "오늘의 출석 스티커를 받아보세요"}</strong>
+                <span>{user ? "동료에게 따뜻한 칭찬을 전해 보세요." : "직원 인증 후 칭찬을 남기고 스티커를 모을 수 있어요."}</span>
+              </div>
+            </div>
+            {!user ? (
+              <button className="button entry-button" onClick={() => setLoginOpen(true)}>입장하고 출석 스티커 받기 <span>→</span></button>
+            ) : (
+              <button className="button entry-button" onClick={() => document.getElementById("write-praise")?.scrollIntoView({ behavior: "smooth" })}>칭찬 작성하기 <span>→</span></button>
+            )}
           </section>
-          <section className="metrics">
-            <article><span>등록된 칭찬</span><strong>{data.stats.praiseCount}</strong></article>
-            <article><span>재직 대상자</span><strong>{data.stats.employeeCount}</strong></article>
-            <article><span>오늘 출석</span><strong>{data.stats.todayAttendance}</strong></article>
-          </section>
-          <section className="content-grid">
-            <form className="card" onSubmit={submitPraise}>
-              <span className="section-label">SEND PRAISE</span>
-              <h2>칭찬 작성하기</h2>
-              <label>칭찬할 직원<select value={targetId} onChange={(e) => setTargetId(e.target.value)} required><option value="">선택해 주세요</option>{data.employees.filter((employee) => employee.id !== user.employeeId).map((employee) => <option key={employee.id} value={employee.id}>{employee.name} ({employee.id})</option>)}</select></label>
-              <label>칭찬 내용<textarea rows={8} value={content} onChange={(e) => setContent(e.target.value)} placeholder="구체적인 상황과 고마웠던 점을 작성해 주세요." required /></label>
-              <div className="counter">공백 제외 {content.replace(/\s/g, "").length} / {data.settings.minChars}자</div>
-              <button className="button primary" disabled={busy}>칭찬 등록</button>
-            </form>
-            <section className="card praise-list">
+
+          <section className="wall-head">
+            <div>
               <span className="section-label">PRAISE WALL</span>
-              <h2>칭찬 게시판</h2>
-              {data.praises.length ? data.praises.map((praise) => <article key={praise.id}><strong>To. {praise.targetName}</strong><p>{praise.content}</p></article>) : <p className="empty">아직 등록된 칭찬이 없습니다.</p>}
-            </section>
+              <h2>우리의 따뜻한 칭찬</h2>
+              <p>서로의 좋은 순간을 발견하고, 함께 나누어요.</p>
+            </div>
+            <div className="wall-meta"><strong>{data.stats.praiseCount}</strong><span>개의 칭찬이 도착했어요</span></div>
           </section>
-          {data.results.length > 0 && <section className="card results"><span className="section-label">WINNERS</span><h2>추첨 결과</h2><div className="result-grid">{data.results.map((result) => <article key={result.id}><span>{result.prizeName}</span><strong>{result.winnerName}</strong></article>)}</div></section>}
+
+          {user && (
+            <div className="tabs" role="tablist" aria-label="칭찬글 분류">
+              <button className={praiseTab === "received" ? "active" : ""} onClick={() => setPraiseTab("received")}>나를 칭찬한 글</button>
+              <button className={praiseTab === "sent" ? "active" : ""} onClick={() => setPraiseTab("sent")}>내가 칭찬한 글</button>
+              <button className={praiseTab === "all" ? "active" : ""} onClick={() => setPraiseTab("all")}>전체 칭찬</button>
+            </div>
+          )}
+
+          <section className="praise-grid">
+            {filteredPraises.length ? filteredPraises.map((praise) => <PraiseCard praise={praise} key={praise.id} />) : (
+              <div className="empty-state">
+                <span>💌</span>
+                <strong>아직 도착한 칭찬이 없어요</strong>
+                <p>첫 번째 따뜻한 마음을 전해 보세요.</p>
+              </div>
+            )}
+          </section>
+
+          {user && (
+            <section className="write-section" id="write-praise">
+              <div className="write-intro">
+                <span className="section-label">SEND PRAISE</span>
+                <h2>마음을 담아 칭찬해 주세요</h2>
+                <p>구체적인 순간과 고마웠던 점을 적으면 마음이 더 잘 전해져요.</p>
+              </div>
+              <form className="panel write-form" onSubmit={submitPraise}>
+                <label>칭찬할 동료<select value={targetId} onChange={(e) => setTargetId(e.target.value)} required><option value="">동료를 선택해 주세요</option>{data.employees.filter((employee) => employee.id !== user.employeeId).map((employee) => <option key={employee.id} value={employee.id}>{employee.name} ({employee.id})</option>)}</select></label>
+                <label>칭찬 내용<textarea rows={6} value={content} onChange={(e) => setContent(e.target.value)} placeholder="어떤 순간이 고마웠는지 들려주세요." required /></label>
+                <div className="form-bottom">
+                  <span className="counter">공백 제외 {content.replace(/\s/g, "").length} / {data.settings.minChars}자</span>
+                  <button className="button primary" disabled={busy}>칭찬 보내기</button>
+                </div>
+              </form>
+            </section>
+          )}
+
+          {data.results.length > 0 && <section className="panel results"><span className="section-label">WINNERS</span><h2>추첨 결과</h2><div className="result-grid">{data.results.map((result) => <article key={result.id}><span>{result.prizeName}</span><strong>{result.winnerName}</strong></article>)}</div></section>}
         </>
+      )}
+
+      {(loginOpen || stickerOpen || loginResultOpen) && (
+        <div className="modal-backdrop" onMouseDown={(event) => {
+          if (event.currentTarget === event.target) {
+            setLoginOpen(false); setStickerOpen(false); setLoginResultOpen(false);
+          }
+        }}>
+          {loginOpen && (
+            <form className="modal" onSubmit={employeeLogin}>
+              <button type="button" className="modal-close" onClick={() => setLoginOpen(false)} aria-label="닫기">×</button>
+              <div className="modal-symbol">★</div>
+              <span className="section-label">WELCOME</span>
+              <h2>직원 인증하고 입장하기</h2>
+              <p className="muted">이름과 사번을 입력하면 오늘의 출석 스티커를 받을 수 있어요.</p>
+              <label>이름<input autoFocus value={login.name} onChange={(e) => setLogin({ ...login, name: e.target.value })} placeholder="이름을 입력해 주세요" required /></label>
+              <label>사번<input inputMode="numeric" value={login.employeeId} onChange={(e) => setLogin({ ...login, employeeId: e.target.value })} placeholder="사번을 입력해 주세요" required /></label>
+              <button className="button primary full" disabled={busy}>{busy ? "확인하고 있어요…" : "입장하고 스티커 받기"}</button>
+            </form>
+          )}
+          {loginResultOpen && (
+            <section className="modal result-modal" aria-live="polite">
+              <button className="modal-close" onClick={() => setLoginResultOpen(false)} aria-label="닫기">×</button>
+              <div className="sticker-earned">★</div>
+              <span className="section-label">ATTENDANCE COMPLETE</span>
+              <h2>출석 스티커를 확인했어요!</h2>
+              <p><strong>{user?.name}님</strong>, 오늘도 칭찬 우체국에 와주셔서 고마워요.</p>
+              <div className="total-ticket"><span>현재 내 스티커</span><strong>{stickerStatus.total}장</strong></div>
+              <button className="button primary full" onClick={() => setLoginResultOpen(false)}>칭찬 보러 가기</button>
+            </section>
+          )}
+          {stickerOpen && (
+            <section className="modal status-modal">
+              <button className="modal-close" onClick={() => setStickerOpen(false)} aria-label="닫기">×</button>
+              <span className="section-label">MY STICKERS</span>
+              <h2>{user?.name}님의 스티커 현황</h2>
+              <div className="sticker-total"><span>모은 스티커</span><strong>{stickerStatus.total}</strong><em>장</em></div>
+              <div className="sticker-breakdown">
+                <article><span>출석</span><strong>{stickerStatus.attendance}</strong></article>
+                <article><span>보낸 칭찬</span><strong>{stickerStatus.sent}</strong></article>
+                <article><span>받은 칭찬</span><strong>{stickerStatus.received}</strong></article>
+              </div>
+              <p className="status-note">출석하고 칭찬을 주고받을 때마다 추첨 스티커가 쌓여요.</p>
+              <button className="button primary full" onClick={() => setStickerOpen(false)}>확인</button>
+            </section>
+          )}
+        </div>
       )}
     </main>
   );

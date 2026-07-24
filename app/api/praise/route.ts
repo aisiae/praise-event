@@ -2,12 +2,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { getSettings } from "@/lib/data";
-import {
-  ACTIVE,
-  isEventOpen,
-  normalizeEmployeeId,
-  normalizeEmployeeName,
-} from "@/lib/utils";
+import { ACTIVE, isEventOpen, normalizeEmployeeId, normalizeEmployeeName } from "@/lib/utils";
 
 export async function POST(request: NextRequest) {
   try {
@@ -36,8 +31,7 @@ export async function POST(request: NextRequest) {
     }
     if (!target || target.status !== ACTIVE) throw new Error("칭찬 대상자를 찾을 수 없습니다.");
 
-    const duplicateId = `${writerId}_${targetId}`;
-    const ref = adminDb.collection("praises").doc(duplicateId);
+    const ref = adminDb.collection("praises").doc(`${writerId}_${targetId}`);
     await adminDb.runTransaction(async (tx) => {
       const duplicate = await tx.get(ref);
       if (duplicate.exists) throw new Error("이미 해당 직원을 칭찬했습니다.");
@@ -54,9 +48,6 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ ok: true });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "칭찬을 등록하지 못했습니다." },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: error instanceof Error ? error.message : "칭찬을 등록하지 못했습니다." }, { status: 400 });
   }
 }

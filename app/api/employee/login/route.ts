@@ -2,13 +2,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { getSettings } from "@/lib/data";
-import {
-  ACTIVE,
-  isEventOpen,
-  normalizeEmployeeId,
-  normalizeEmployeeName,
-  todaySeoul,
-} from "@/lib/utils";
+import { ACTIVE, isEventOpen, normalizeEmployeeId, normalizeEmployeeName, todaySeoul } from "@/lib/utils";
 
 export async function POST(request: NextRequest) {
   try {
@@ -26,38 +20,44 @@ export async function POST(request: NextRequest) {
     }
 
     const settings = await getSettings();
+    const eventOpen = isEventOpen(settings);
     const date = todaySeoul();
     const attendanceRef = adminDb.collection("attendance").doc(`${date}_${employeeId}`);
     let attendanceAwarded = false;
 
-    if (isEventOpen(settings)) {
+    if (eventOpen) {
       await adminDb.runTransaction(async (tx) => {
         const attendance = await tx.get(attendanceRef);
         if (!attendance.exists) {
-          tx.set(attendanceRef, {
-            date,
-            employeeId,
-            name: employee.name,
-            checkedAt: FieldValue.serverTimestamp(),
-          });
+          tx.set(attendanceRef, { date, employeeId, name: employee.name, checkedAt: FieldValue.serverTimestamp() });
           attendanceAwarded = true;
         }
       });
     }
 
+    const [attendanceSnap, sentSnap, receivedSnap] = await Promise.all([
+      adminDb.collection("attendance").where("employeeId", "==", employeeId).get(),
+      adminDb.collection("praises").where("writerId", "==", employeeId).where("status", "==", "게시").get(),
+      adminDb.collection("praises").where("targetId", "==", employeeId).where("status", "==", "게시").get(),
+    ]);
+    const stickerStatus = {
+      attendance: attendanceSnap.size,
+      sent: sentSnap.size,
+      received: receivedSnap.size,
+      total: 1 + attendanceSnap.size + sentSnap.size + receivedSnap.size,
+    };
+
     return NextResponse.json({
       employee: { employeeId, name: employee.name },
       attendanceAwarded,
-      attendanceMessage: !isEventOpen(settings)
+      attendanceMessage: !eventOpen
         ? "이벤트 기간이 아니어서 출석 스티커는 지급되지 않았습니다."
         : attendanceAwarded
-          ? "오늘의 출석 스티커 1개를 받았습니다."
+          ? "오늘의 출석 스티커 1장을 받았습니다!"
           : "오늘 출석 스티커는 이미 받았습니다.",
+      stickerStatus,
     });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "로그인하지 못했습니다." },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: error instanceof Error ? error.message : "로그인하지 못했습니다." }, { status: 400 });
   }
 }

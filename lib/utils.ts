@@ -3,19 +3,11 @@ import { Timestamp } from "firebase-admin/firestore";
 export const ACTIVE = "재직";
 
 export function normalizeEmployeeId(value: unknown) {
-  return String(value ?? "")
-    .normalize("NFKC")
-    .replace(/[\u200B-\u200D\uFEFF]/g, "")
-    .replace(/\s+/g, "")
-    .trim();
+  return String(value ?? "").normalize("NFKC").replace(/[\u200B-\u200D\uFEFF]/g, "").replace(/\s+/g, "").trim();
 }
 
 export function normalizeEmployeeName(value: unknown) {
-  return String(value ?? "")
-    .normalize("NFC")
-    .replace(/[\u200B-\u200D\uFEFF]/g, "")
-    .replace(/\s+/g, "")
-    .trim();
+  return String(value ?? "").normalize("NFC").replace(/[\u200B-\u200D\uFEFF]/g, "").replace(/\s+/g, "").trim();
 }
 
 export function todaySeoul() {
@@ -31,9 +23,7 @@ export function serialize(value: unknown): unknown {
   if (value instanceof Timestamp) return value.toDate().toISOString();
   if (Array.isArray(value)) return value.map(serialize);
   if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value).map(([key, item]) => [key, serialize(item)]),
-    );
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, serialize(item)]));
   }
   return value;
 }
