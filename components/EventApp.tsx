@@ -44,6 +44,8 @@ type AdminData = {
   results: Array<{ id: string; prizeName: string; winnerName: string }>;
   standings: Array<{ employeeId: string; name: string; attendance: number; sent: number; received: number; tickets: number }>;
   praises: Praise[];
+  hasPublishedResult: boolean;
+  resultPublished: boolean;
 };
 
 const emptyPublic: PublicData = {
@@ -438,8 +440,8 @@ export default function EventApp() {
                   <label>스티커 지급 기준<textarea rows={4} value={admin.settings.detailAttendance} onChange={(e) => setAdmin({ ...admin, settings: { ...admin.settings, detailAttendance: e.target.value } })} /></label>
                   <label>상품 안내<textarea rows={4} value={admin.settings.detailPrizes} onChange={(e) => setAdmin({ ...admin, settings: { ...admin.settings, detailPrizes: e.target.value } })} /></label>
                   <label>유의사항<textarea rows={3} value={admin.settings.detailNotes} onChange={(e) => setAdmin({ ...admin, settings: { ...admin.settings, detailNotes: e.target.value } })} /></label>
-                  <label className="check"><input type="checkbox" checked={admin.settings.showResults} onChange={(e) => setAdmin({ ...admin, settings: { ...admin.settings, showResults: e.target.checked } })} /> 추첨 결과 공개</label>
                   <button className="button primary" disabled={busy} onClick={() => runAdmin({ action: "saveSettings", settings: admin.settings }, "설정을 저장했습니다.")}>설정 저장</button>
+                  <div className="new-event-box"><div><strong>새 이벤트 만들기</strong><p>현재 이벤트 결과를 보관하고 칭찬·출석·상품 데이터를 새 회차로 초기화합니다. 직원 명단은 유지됩니다.</p></div><button className="button danger" disabled={busy} onClick={() => confirm("현재 이벤트를 마감하고 새 이벤트를 만들까요? 기존 결과는 보관됩니다.") && runAdmin({ action: "createNewEvent" }, "새 이벤트를 만들었습니다.")}>새 이벤트 만들기</button></div>
               </section>}
 
               {adminTab === "prizes" && <section className="panel admin-section">
@@ -481,7 +483,14 @@ export default function EventApp() {
                 <section className="panel">
                   <div className="section-head compact"><div><h3>실시간 상품 순위</h3><p className="muted">스티커 스코어가 바뀌면 직원 순위도 자동으로 변경됩니다.</p></div></div>
                   <div className="ranked-prizes">{admin.prizes.flatMap((prize) => Array.from({ length: Math.max(1, prize.quantity) }, () => prize)).map((prize, index) => { const employee = admin.standings[index]; return <article key={`${prize.id || prize.name}-${index}`}><span className="rank-badge">{index + 1}위</span><div className="live-rank-info"><strong>{prize.name || "상품명 미입력"} {prize.amount > 0 && `${prize.amount.toLocaleString("ko-KR")}원`}</strong><p>{employee ? `${employee.name} · ${employee.tickets}장` : "해당 순위 직원 없음"}</p></div></article>; })}</div>
-                  <div className="publish-result-box"><div><strong>{admin.settings.showResults ? "현재 결과가 공개되어 있습니다." : "이벤트 종료 후 최종 순위를 공개해 주세요."}</strong><p>공개 시점의 순위가 별도 자료로 보관됩니다.</p></div><button className="button primary" disabled={busy} onClick={() => confirm("현재 순위를 최종 결과로 공개할까요?") && runAdmin({ action: "publishResults" }, "이벤트 결과를 공개했습니다.")}>결과 공개</button></div>
+                  <div className="publish-result-box">
+                    <div><strong>{admin.resultPublished ? "현재 결과가 공개되어 있습니다." : admin.hasPublishedResult ? "현재 결과가 숨김 상태입니다." : "이벤트 기간을 확인하세요."}</strong><p>{admin.hasPublishedResult ? "저장된 결과를 숨기거나 다시 공개할 수 있습니다." : "결과 공개 시점의 순위가 별도 자료로 보관됩니다."}</p></div>
+                    {admin.resultPublished
+                      ? <button className="button secondary" disabled={busy} onClick={() => runAdmin({ action: "toggleResultsVisibility", visible: false }, "결과를 숨겼습니다.")}>결과 숨기기</button>
+                      : admin.hasPublishedResult
+                        ? <button className="button primary" disabled={busy} onClick={() => runAdmin({ action: "toggleResultsVisibility", visible: true }, "결과를 다시 공개했습니다.")}>다시 공개</button>
+                        : <button className="button primary" disabled={busy} onClick={() => confirm("현재 순위를 최종 결과로 공개할까요?") && runAdmin({ action: "publishResults" }, "이벤트 결과를 공개했습니다.")}>결과 공개</button>}
+                  </div>
                 </section>
               </section>}
             </>

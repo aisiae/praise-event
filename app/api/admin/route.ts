@@ -2,18 +2,19 @@ import { FieldValue } from "firebase-admin/firestore";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { getAdminDb } from "@/lib/firebase-admin";
-import { getPublicData, getSettings, logAdmin } from "@/lib/data";
+import { defaultSettings, getPublicData, getSettings, logAdmin } from "@/lib/data";
 import { ACTIVE, normalizeEmployeeId, normalizeEmployeeName, serialize } from "@/lib/utils";
 
 async function adminData() {
   const adminDb = getAdminDb();
-  const [employees, prizes, settings, results, standings, praises] = await Promise.all([
+  const [employees, prizes, settings, results, standings, praises, currentResult] = await Promise.all([
     adminDb.collection("employees").orderBy("name").get(),
     adminDb.collection("prizes").orderBy("order").get(),
     getSettings(),
     adminDb.collection("drawResults").orderBy("drawnAt", "desc").get(),
     ticketCandidates(),
     adminDb.collection("praises").orderBy("createdAt", "desc").get(),
+    adminDb.doc("config/currentResult").get(),
   ]);
   return serialize({
     employees: employees.docs.map((doc) => {
@@ -29,6 +30,8 @@ async function adminData() {
     results: results.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
     standings: standings.sort((a, b) => b.tickets - a.tickets || a.name.localeCompare(b.name, "ko")),
     praises: praises.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
+    hasPublishedResult: currentResult.exists,
+    resultPublished: currentResult.exists && Boolean(settings.showResults),
   }) as Record<string, unknown>;
 }
 
@@ -90,6 +93,15 @@ function weightedPick<T extends { tickets: number }>(items: T[]) {
     if (point < 0) return item;
   }
   return items[items.length - 1];
+}
+
+async function deleteDocsInChunks(docs: Array<{ ref: FirebaseFirestore.DocumentReference }>) {
+  const adminDb = getAdminDb();
+  for (let index = 0; index < docs.length; index += 450) {
+    const batch = adminDb.batch();
+    docs.slice(index, index + 450).forEach((doc) => batch.delete(doc.ref));
+    await batch.commit();
+  }
 }
 
 export async function GET(request: NextRequest) {
@@ -216,6 +228,55 @@ export async function POST(request: NextRequest) {
       batch.set(adminDb.doc("config/settings"), { showResults: true }, { merge: true });
       await batch.commit();
       await logAdmin("이벤트 결과 공개", archiveRef.id, `${publishedResults.length}개 순위`);
+    } else if (action === "toggleResultsVisibility") {
+      const visible = Boolean(body.visible);
+      if (visible) {
+        const currentResult = await adminDb.doc("config/currentResult").get();
+        if (!currentResult.exists) throw new Error("먼저 결과 공개를 진행해 주세요.");
+      }
+      await adminDb.doc("config/settings").set({ showResults: visible }, { merge: true });
+      await logAdmin(visible ? "이벤트 결과 다시 공개" : "이벤트 결과 숨김");
+    } else if (action === "createNewEvent") {
+      const [settings, prizesSnap, standings, praisesSnap, attendanceSnap, drawResultsSnap] = await Promise.all([
+        getSettings(),
+        adminDb.collection("prizes").get(),
+        ticketCandidates(),
+        adminDb.collection("praises").get(),
+        adminDb.collection("attendance").get(),
+        adminDb.collection("drawResults").get(),
+      ]);
+      const prizes = prizesSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() } as any)).sort((a, b) => Number(a.order || 999) - Number(b.order || 999));
+      const slots = prizes.flatMap((prize) => Array.from({ length: Math.max(1, Number(prize.quantity || 1)) }, () => prize));
+      const ranked = standings.sort((a, b) => b.tickets - a.tickets || a.name.localeCompare(b.name, "ko"));
+      const finalSnapshot = slots.map((prize, index) => ({
+        rank: index + 1,
+        prizeName: String(prize.name || ""),
+        amount: Number(prize.amount || 0),
+        employeeId: ranked[index]?.employeeId || "",
+        winnerName: ranked[index]?.name || "",
+        tickets: ranked[index]?.tickets || 0,
+      }));
+      await adminDb.collection("eventArchives").add({
+        eventName: settings.eventName,
+        startDate: settings.startDate,
+        endDate: settings.endDate,
+        results: finalSnapshot,
+        status: "closed",
+        closedAt: FieldValue.serverTimestamp(),
+      });
+      await Promise.all([
+        deleteDocsInChunks(praisesSnap.docs),
+        deleteDocsInChunks(attendanceSnap.docs),
+        deleteDocsInChunks(prizesSnap.docs),
+        deleteDocsInChunks(drawResultsSnap.docs),
+      ]);
+      await adminDb.doc("config/currentResult").delete();
+      await adminDb.doc("config/settings").set({
+        ...defaultSettings,
+        eventName: "새 칭찬 스티커 이벤트",
+        showResults: false,
+      });
+      await logAdmin("새 이벤트 생성", "", settings.eventName);
     } else if (action === "runDraw") {
       const prizes = await adminDb.collection("prizes").where("active", "==", true).get();
       const candidates = await ticketCandidates();
