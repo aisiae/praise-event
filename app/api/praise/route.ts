@@ -46,7 +46,16 @@ export async function POST(request: NextRequest) {
       });
     });
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({
+      ok: true,
+      praise: {
+        id: ref.id,
+        targetId,
+        targetName: target.name,
+        content,
+        createdAt: new Date().toISOString(),
+      },
+    });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "칭찬을 등록하지 못했습니다." }, { status: 400 });
   }

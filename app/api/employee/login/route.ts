@@ -2,7 +2,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { getSettings } from "@/lib/data";
-import { ACTIVE, isEventOpen, normalizeEmployeeId, normalizeEmployeeName, todaySeoul } from "@/lib/utils";
+import { ACTIVE, isEventOpen, normalizeEmployeeId, normalizeEmployeeName, serialize, todaySeoul } from "@/lib/utils";
 
 export async function POST(request: NextRequest) {
   try {
@@ -38,6 +38,7 @@ export async function POST(request: NextRequest) {
     }
 
     let stickerStatus = { attendance: attendanceAwarded ? 1 : 0, sent: 0, received: 0, total: attendanceAwarded ? 1 : 0 };
+    let personalPraises: { received: unknown[]; sent: unknown[] } = { received: [], sent: [] };
     try {
       const [attendanceSnap, sentSnap, receivedSnap] = await Promise.all([
         adminDb.collection("attendance").where("employeeId", "==", employeeId).get(),
@@ -52,6 +53,13 @@ export async function POST(request: NextRequest) {
         received,
         total: attendanceSnap.size + sent + received,
       };
+      personalPraises = {
+        received: receivedSnap.docs.filter((doc) => doc.data().status === "게시").map((doc) => ({ id: doc.id, ...doc.data() })),
+        sent: sentSnap.docs.filter((doc) => doc.data().status === "게시").map((doc) => {
+          const row = doc.data();
+          return { id: doc.id, targetName: row.targetName, content: row.content, createdAt: row.createdAt };
+        }),
+      };
     } catch (statusError) {
       console.error("스티커 현황 조회 실패", statusError);
     }
@@ -65,6 +73,7 @@ export async function POST(request: NextRequest) {
           ? "오늘의 출석 스티커 1장을 받았습니다!"
           : "오늘 출석 스티커는 이미 받았습니다.",
       stickerStatus,
+      personalPraises: serialize(personalPraises),
     });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "로그인하지 못했습니다." }, { status: 400 });

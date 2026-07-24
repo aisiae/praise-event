@@ -38,7 +38,15 @@ export async function getPublicData() {
 
   const employees = employeesSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
   const praises = praisesSnap.docs
-    .map((doc) => ({ id: doc.id, ...doc.data() }))
+    .map((doc) => {
+      const row = doc.data();
+      return {
+        id: doc.id,
+        targetName: row.targetName,
+        content: row.content,
+        createdAt: row.createdAt,
+      };
+    })
     .sort((a: any, b: any) => b.createdAt?.toMillis?.() - a.createdAt?.toMillis?.());
   const prizes = prizesSnap.docs
     .map((doc) => ({ id: doc.id, ...doc.data() }))

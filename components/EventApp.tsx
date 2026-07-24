@@ -89,7 +89,7 @@ function EventPeriod({ settings }: { settings: Settings }) {
   );
 }
 
-function PraiseCard({ praise, onOpen }: { praise: Praise; onOpen: () => void }) {
+function PraiseCard({ praise, onOpen, showWriter }: { praise: Praise; onOpen: () => void; showWriter: boolean }) {
   return (
     <button className="praise-card" onClick={onOpen}>
       <div className="praise-card-top">
@@ -97,7 +97,7 @@ function PraiseCard({ praise, onOpen }: { praise: Praise; onOpen: () => void }) 
         <span className="card-date">{formatDate(praise.createdAt)}</span>
       </div>
       <p>{praise.content}</p>
-      <div className="from-name">From. {praise.writerName || "익명의 동료"}</div>
+      {showWriter && praise.writerName && <div className="from-name">From. {praise.writerName}</div>}
     </button>
   );
 }
@@ -113,6 +113,8 @@ export default function EventApp() {
   const [attendanceAwarded, setAttendanceAwarded] = useState(false);
   const [stickerStatus, setStickerStatus] = useState<StickerStatus>(emptyStickerStatus);
   const [praiseTab, setPraiseTab] = useState<"all" | "received" | "sent">("all");
+  const [receivedPraises, setReceivedPraises] = useState<Praise[]>([]);
+  const [sentPraises, setSentPraises] = useState<Praise[]>([]);
   const [selectedPraise, setSelectedPraise] = useState<Praise | null>(null);
   const [adminTab, setAdminTab] = useState<"employees" | "settings" | "prizes" | "status" | "results">("employees");
   const [notice, setNotice] = useState("");
@@ -153,9 +155,9 @@ export default function EventApp() {
 
   const filteredPraises = useMemo(() => {
     if (!user || praiseTab === "all") return data.praises;
-    if (praiseTab === "received") return data.praises.filter((item) => item.targetId === user.employeeId);
-    return data.praises.filter((item) => item.writerId === user.employeeId);
-  }, [data.praises, praiseTab, user]);
+    if (praiseTab === "received") return receivedPraises;
+    return sentPraises;
+  }, [data.praises, praiseTab, receivedPraises, sentPraises, user]);
 
   const employeeLogin = async (event: FormEvent) => {
     event.preventDefault();
@@ -166,6 +168,7 @@ export default function EventApp() {
         attendanceAwarded: boolean;
         attendanceMessage: string;
         stickerStatus: StickerStatus;
+        personalPraises: { received: Praise[]; sent: Praise[] };
       }>("/api/employee/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -174,6 +177,8 @@ export default function EventApp() {
       setUser(result.employee);
       setAttendanceAwarded(result.attendanceAwarded);
       setStickerStatus(result.stickerStatus);
+      setReceivedPraises(result.personalPraises.received);
+      setSentPraises(result.personalPraises.sent);
       setNotice(result.attendanceMessage);
       setLoginOpen(false);
       setLoginResultOpen(true);
@@ -191,7 +196,7 @@ export default function EventApp() {
     if (!user) return;
     setBusy(true);
     try {
-      await jsonFetch("/api/praise", {
+      const result = await jsonFetch<{ praise: Praise }>("/api/praise", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -203,6 +208,7 @@ export default function EventApp() {
       });
       setTargetId("");
       setContent("");
+      setSentPraises((items) => [result.praise, ...items]);
       setNotice("따뜻한 칭찬이 등록되었습니다.");
       setStickerStatus((status) => ({ ...status, sent: status.sent + 1, total: status.total + 1 }));
       await refresh();
@@ -283,6 +289,8 @@ export default function EventApp() {
   const logoutEmployee = () => {
     setUser(null);
     setStickerStatus(emptyStickerStatus);
+    setReceivedPraises([]);
+    setSentPraises([]);
     setPraiseTab("all");
   };
 
@@ -460,7 +468,7 @@ export default function EventApp() {
           )}
 
           <section className="praise-grid">
-            {filteredPraises.length ? filteredPraises.map((praise) => <PraiseCard praise={praise} onOpen={() => setSelectedPraise(praise)} key={praise.id} />) : (
+            {filteredPraises.length ? filteredPraises.map((praise) => <PraiseCard praise={praise} showWriter={Boolean(user && praiseTab === "received")} onOpen={() => setSelectedPraise(praise)} key={praise.id} />) : (
               <div className="empty-state">
                 <span>💌</span>
                 <strong>아직 도착한 칭찬이 없어요</strong>
@@ -541,7 +549,7 @@ export default function EventApp() {
               <span className="section-label">PRAISE MESSAGE</span>
               <h2>To. {selectedPraise.targetName}</h2>
               <p className="praise-full-content">{selectedPraise.content}</p>
-              <div className="praise-full-meta"><span>From. {selectedPraise.writerName || "익명의 동료"}</span><span>{formatDate(selectedPraise.createdAt)}</span></div>
+              <div className="praise-full-meta">{user && praiseTab === "received" && selectedPraise.writerName && <span>From. {selectedPraise.writerName}</span>}<span>{formatDate(selectedPraise.createdAt)}</span></div>
             </section>
           )}
           {eventDetailOpen && (
