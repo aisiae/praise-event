@@ -37,14 +37,16 @@ export async function POST(request: NextRequest) {
 
     const [attendanceSnap, sentSnap, receivedSnap] = await Promise.all([
       adminDb.collection("attendance").where("employeeId", "==", employeeId).get(),
-      adminDb.collection("praises").where("writerId", "==", employeeId).where("status", "==", "게시").get(),
-      adminDb.collection("praises").where("targetId", "==", employeeId).where("status", "==", "게시").get(),
+      adminDb.collection("praises").where("writerId", "==", employeeId).get(),
+      adminDb.collection("praises").where("targetId", "==", employeeId).get(),
     ]);
+    const sent = sentSnap.docs.filter((doc) => doc.data().status === "게시").length;
+    const received = receivedSnap.docs.filter((doc) => doc.data().status === "게시").length;
     const stickerStatus = {
       attendance: attendanceSnap.size,
-      sent: sentSnap.size,
-      received: receivedSnap.size,
-      total: 1 + attendanceSnap.size + sentSnap.size + receivedSnap.size,
+      sent,
+      received,
+      total: 1 + attendanceSnap.size + sent + received,
     };
 
     return NextResponse.json({

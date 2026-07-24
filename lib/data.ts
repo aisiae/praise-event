@@ -4,7 +4,7 @@ import { ACTIVE, serialize, todaySeoul } from "@/lib/utils";
 
 export const defaultSettings = {
   eventName: "칭찬 스티커 이벤트",
-  intro: "동료에게 따뜻한 칭찬을 전하고 행운의 주인공이 되어 보세요.",
+  intro: "동료에게 따뜻한 칭찬과 고마움을 전하고 행운의 주인공이 되어 보세요.",
   startDate: "",
   endDate: "",
   showResults: false,
@@ -14,7 +14,11 @@ export const defaultSettings = {
 export async function getSettings() {
   const adminDb = getAdminDb();
   const snap = await adminDb.doc("config/settings").get();
-  return { ...defaultSettings, ...(snap.exists ? snap.data() : {}) };
+  const settings = { ...defaultSettings, ...(snap.exists ? snap.data() : {}) };
+  if (settings.intro === "동료에게 따뜻한 칭찬을 전하고 행운의 주인공이 되어 보세요.") {
+    settings.intro = defaultSettings.intro;
+  }
+  return settings;
 }
 
 export async function getPublicData() {

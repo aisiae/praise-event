@@ -42,7 +42,7 @@ type AdminData = {
 const emptyPublic: PublicData = {
   settings: {
     eventName: "칭찬 스티커 이벤트",
-    intro: "동료에게 따뜻한 칭찬을 전하고 행운의 주인공이 되어 보세요.",
+    intro: "동료에게 따뜻한 칭찬과 고마움을 전하고 행운의 주인공이 되어 보세요.",
     startDate: "",
     endDate: "",
     showResults: false,
@@ -108,6 +108,7 @@ export default function EventApp() {
   const [adminOpen, setAdminOpen] = useState(false);
   const [admin, setAdmin] = useState<AdminData | null>(null);
   const [adminLogin, setAdminLogin] = useState({ email: "", password: "" });
+  const [rememberAdminEmail, setRememberAdminEmail] = useState(false);
   const [employeeText, setEmployeeText] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -115,6 +116,11 @@ export default function EventApp() {
 
   useEffect(() => {
     refresh().catch((error) => setNotice(error.message));
+    const savedAdminEmail = window.localStorage.getItem("praise-admin-email");
+    if (savedAdminEmail) {
+      setAdminLogin((value) => ({ ...value, email: savedAdminEmail }));
+      setRememberAdminEmail(true);
+    }
   }, []);
 
   useEffect(() => {
@@ -213,6 +219,11 @@ export default function EventApp() {
     try {
       await signInWithEmailAndPassword(getFirebaseAuth(), adminLogin.email, adminLogin.password);
       await adminRequest();
+      if (rememberAdminEmail) {
+        window.localStorage.setItem("praise-admin-email", adminLogin.email.trim());
+      } else {
+        window.localStorage.removeItem("praise-admin-email");
+      }
       setNotice("관리자 모드로 로그인했습니다.");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "관리자 로그인에 실패했습니다.");
@@ -243,7 +254,7 @@ export default function EventApp() {
     <main>
       <header className="topbar">
         <button className="brand" onClick={() => setAdminOpen(false)} aria-label="메인 화면으로">
-          <span className="brand-mark">칭</span>
+          <img className="brand-logo" src="/hwamulman-logo.png" alt="화물맨" />
           <span>칭찬 우체국</span>
         </button>
         <div className="top-actions">
@@ -290,6 +301,7 @@ export default function EventApp() {
               <h2>관리자 로그인</h2>
               <label>이메일<input type="email" value={adminLogin.email} onChange={(e) => setAdminLogin({ ...adminLogin, email: e.target.value })} required /></label>
               <label>비밀번호<input type="password" value={adminLogin.password} onChange={(e) => setAdminLogin({ ...adminLogin, password: e.target.value })} required /></label>
+              <label className="remember-check"><input type="checkbox" checked={rememberAdminEmail} onChange={(e) => setRememberAdminEmail(e.target.checked)} /> 이메일 기억하기</label>
               <button className="button primary" disabled={busy}>로그인</button>
             </form>
           ) : (
