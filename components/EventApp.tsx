@@ -28,12 +28,13 @@ type Settings = {
   detailNotes: string;
 };
 type StickerStatus = { attendance: number; sent: number; received: number; total: number };
+type PublishedResult = { rank: number; prizeName: string; amount: number; employeeId: string; winnerName: string; tickets: number };
 type PublicData = {
   settings: Settings;
   employees: Employee[];
   praises: Praise[];
   prizes: Prize[];
-  results: Array<{ id: string; prizeName: string; winnerName: string }>;
+  results: PublishedResult[];
   stats: { employeeCount: number; praiseCount: number; todayAttendance: number };
 };
 type AdminData = {
@@ -111,6 +112,7 @@ export default function EventApp() {
   const [stickerOpen, setStickerOpen] = useState(false);
   const [loginResultOpen, setLoginResultOpen] = useState(false);
   const [eventDetailOpen, setEventDetailOpen] = useState(false);
+  const [resultOpen, setResultOpen] = useState(false);
   const [attendanceAwarded, setAttendanceAwarded] = useState(false);
   const [stickerStatus, setStickerStatus] = useState<StickerStatus>(emptyStickerStatus);
   const [praiseTab, setPraiseTab] = useState<"all" | "received" | "sent">("all");
@@ -142,19 +144,20 @@ export default function EventApp() {
   }, []);
 
   useEffect(() => {
-    if (!loginOpen && !stickerOpen && !loginResultOpen && !eventDetailOpen && !selectedPraise) return;
+    if (!loginOpen && !stickerOpen && !loginResultOpen && !eventDetailOpen && !resultOpen && !selectedPraise) return;
     const close = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setLoginOpen(false);
         setStickerOpen(false);
         setLoginResultOpen(false);
         setEventDetailOpen(false);
+        setResultOpen(false);
         setSelectedPraise(null);
       }
     };
     window.addEventListener("keydown", close);
     return () => window.removeEventListener("keydown", close);
-  }, [loginOpen, stickerOpen, loginResultOpen, eventDetailOpen, selectedPraise]);
+  }, [loginOpen, stickerOpen, loginResultOpen, eventDetailOpen, resultOpen, selectedPraise]);
 
   const filteredPraises = useMemo(() => {
     if (!user || praiseTab === "all") return data.praises;
@@ -368,7 +371,7 @@ export default function EventApp() {
             <span className="eyebrow">PRAISE & ATTENDANCE</span>
             <h1>{data.settings.eventName}</h1>
             <p>{data.settings.intro}</p>
-            <div className="hero-info-actions"><EventPeriod settings={data.settings} /><button className="detail-button" onClick={() => setEventDetailOpen(true)}>상세보기 <span>→</span></button></div>
+            <div className="hero-info-actions"><EventPeriod settings={data.settings} /><button className="detail-button" onClick={() => setEventDetailOpen(true)}>상세보기 <span>→</span></button><button className="detail-button result-view-button" onClick={() => setResultOpen(true)}>결과 보기 <span>→</span></button></div>
           </div>
           <div className="hero-deco" aria-hidden="true">
             <span>칭찬</span><span>♥</span><span>고마워요!</span>
@@ -478,6 +481,7 @@ export default function EventApp() {
                 <section className="panel">
                   <div className="section-head compact"><div><h3>실시간 상품 순위</h3><p className="muted">스티커 스코어가 바뀌면 직원 순위도 자동으로 변경됩니다.</p></div></div>
                   <div className="ranked-prizes">{admin.prizes.flatMap((prize) => Array.from({ length: Math.max(1, prize.quantity) }, () => prize)).map((prize, index) => { const employee = admin.standings[index]; return <article key={`${prize.id || prize.name}-${index}`}><span className="rank-badge">{index + 1}위</span><div className="live-rank-info"><strong>{prize.name || "상품명 미입력"} {prize.amount > 0 && `${prize.amount.toLocaleString("ko-KR")}원`}</strong><p>{employee ? `${employee.name} · ${employee.tickets}장` : "해당 순위 직원 없음"}</p></div></article>; })}</div>
+                  <div className="publish-result-box"><div><strong>{admin.settings.showResults ? "현재 결과가 공개되어 있습니다." : "이벤트 종료 후 최종 순위를 공개해 주세요."}</strong><p>공개 시점의 순위가 별도 자료로 보관됩니다.</p></div><button className="button primary" disabled={busy} onClick={() => confirm("현재 순위를 최종 결과로 공개할까요?") && runAdmin({ action: "publishResults" }, "이벤트 결과를 공개했습니다.")}>결과 공개</button></div>
                 </section>
               </section>}
             </>
@@ -545,14 +549,13 @@ export default function EventApp() {
             </section>
           )}
 
-          {data.results.length > 0 && <section className="panel results"><span className="section-label">WINNERS</span><h2>추첨 결과</h2><div className="result-grid">{data.results.map((result) => <article key={result.id}><span>{result.prizeName}</span><strong>{result.winnerName}</strong></article>)}</div></section>}
         </>
       )}
 
-      {(loginOpen || stickerOpen || loginResultOpen || eventDetailOpen || selectedPraise) && (
+      {(loginOpen || stickerOpen || loginResultOpen || eventDetailOpen || resultOpen || selectedPraise) && (
         <div className="modal-backdrop" onMouseDown={(event) => {
           if (event.currentTarget === event.target) {
-            setLoginOpen(false); setStickerOpen(false); setLoginResultOpen(false); setEventDetailOpen(false); setSelectedPraise(null);
+            setLoginOpen(false); setStickerOpen(false); setLoginResultOpen(false); setEventDetailOpen(false); setResultOpen(false); setSelectedPraise(null);
           }
         }}>
           {loginOpen && (
@@ -615,6 +618,15 @@ export default function EventApp() {
                 <article><span className="detail-number">04</span><div><h3>유의사항</h3><p>{data.settings.detailNotes}</p></div></article>
               </div>
               <button className="button primary full" onClick={() => setEventDetailOpen(false)}>확인</button>
+            </section>
+          )}
+          {resultOpen && (
+            <section className="modal event-result-modal">
+              <button className="modal-close" onClick={() => setResultOpen(false)} aria-label="닫기">×</button>
+              <span className="section-label">EVENT RESULTS</span>
+              <h2>이벤트 결과</h2>
+              {data.results.length ? <div className="public-result-list">{data.results.map((result) => <article key={result.rank}><span className="rank-badge">{result.rank}위</span><div><strong>{result.prizeName} {result.amount > 0 && `${result.amount.toLocaleString("ko-KR")}원`}</strong><p>{result.winnerName ? `${result.winnerName} · ${result.tickets}장` : "해당 순위 없음"}</p></div></article>)}</div> : <div className="result-waiting"><span>★</span><strong>이벤트 진행중입니다.</strong><p>이벤트가 마감되고 결과가 공개되면 이곳에서 확인할 수 있어요.</p></div>}
+              <button className="button primary full" onClick={() => setResultOpen(false)}>확인</button>
             </section>
           )}
         </div>

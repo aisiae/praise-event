@@ -27,12 +27,12 @@ export async function getSettings() {
 
 export async function getPublicData() {
   const adminDb = getAdminDb();
-  const [settings, employeesSnap, praisesSnap, prizesSnap, resultsSnap, attendanceSnap] = await Promise.all([
+  const [settings, employeesSnap, praisesSnap, prizesSnap, currentResultSnap, attendanceSnap] = await Promise.all([
     getSettings(),
     adminDb.collection("employees").where("status", "==", ACTIVE).get(),
     adminDb.collection("praises").where("status", "==", "게시").get(),
     adminDb.collection("prizes").where("active", "==", true).get(),
-    adminDb.collection("drawResults").orderBy("drawnAt", "desc").get(),
+    adminDb.doc("config/currentResult").get(),
     adminDb.collection("attendance").where("date", "==", todaySeoul()).get(),
   ]);
 
@@ -51,7 +51,9 @@ export async function getPublicData() {
   const prizes = prizesSnap.docs
     .map((doc) => ({ id: doc.id, ...doc.data() }))
     .sort((a: any, b: any) => Number(a.order || 999) - Number(b.order || 999));
-  const results = settings.showResults ? resultsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })) : [];
+  const results = settings.showResults && currentResultSnap.exists
+    ? (currentResultSnap.data()?.results || [])
+    : [];
 
   return serialize({
     settings,

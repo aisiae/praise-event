@@ -179,6 +179,43 @@ export async function POST(request: NextRequest) {
       });
       await batch.commit();
       await logAdmin("상품 저장");
+    } else if (action === "publishResults") {
+      const [settings, prizesSnap, standings] = await Promise.all([
+        getSettings(),
+        adminDb.collection("prizes").where("active", "==", true).get(),
+        ticketCandidates(),
+      ]);
+      const prizes = prizesSnap.docs
+        .map((doc) => ({ id: doc.id, ...doc.data() } as any))
+        .sort((a, b) => Number(a.order || 999) - Number(b.order || 999));
+      const slots = prizes.flatMap((prize) => Array.from({ length: Math.max(1, Number(prize.quantity || 1)) }, () => prize));
+      const ranked = standings.sort((a, b) => b.tickets - a.tickets || a.name.localeCompare(b.name, "ko"));
+      const publishedResults = slots.map((prize, index) => ({
+        rank: index + 1,
+        prizeName: String(prize.name || ""),
+        amount: Number(prize.amount || 0),
+        employeeId: ranked[index]?.employeeId || "",
+        winnerName: ranked[index]?.name || "",
+        tickets: ranked[index]?.tickets || 0,
+      }));
+      const archiveRef = adminDb.collection("eventArchives").doc();
+      const batch = adminDb.batch();
+      batch.set(archiveRef, {
+        eventName: settings.eventName,
+        startDate: settings.startDate,
+        endDate: settings.endDate,
+        results: publishedResults,
+        publishedAt: FieldValue.serverTimestamp(),
+      });
+      batch.set(adminDb.doc("config/currentResult"), {
+        archiveId: archiveRef.id,
+        eventName: settings.eventName,
+        results: publishedResults,
+        publishedAt: FieldValue.serverTimestamp(),
+      });
+      batch.set(adminDb.doc("config/settings"), { showResults: true }, { merge: true });
+      await batch.commit();
+      await logAdmin("이벤트 결과 공개", archiveRef.id, `${publishedResults.length}개 순위`);
     } else if (action === "runDraw") {
       const prizes = await adminDb.collection("prizes").where("active", "==", true).get();
       const candidates = await ticketCandidates();
