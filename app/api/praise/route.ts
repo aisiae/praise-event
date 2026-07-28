@@ -2,7 +2,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { getSettings } from "@/lib/data";
-import { ACTIVE, isEventOpen, normalizeEmployeeId, normalizeEmployeeName } from "@/lib/utils";
+import { ACTIVE, isEventOpen, normalizeEmployeeId, normalizeEmployeeName, todaySeoul } from "@/lib/utils";
 
 export async function POST(request: NextRequest) {
   try {
@@ -31,10 +31,10 @@ export async function POST(request: NextRequest) {
     }
     if (!target || target.status !== ACTIVE) throw new Error("칭찬 대상자를 찾을 수 없습니다.");
 
-    const ref = adminDb.collection("praises").doc(`${writerId}_${targetId}`);
+    const ref = adminDb.collection("praises").doc(`${writerId}_${targetId}_${todaySeoul()}`);
     await adminDb.runTransaction(async (tx) => {
       const duplicate = await tx.get(ref);
-      if (duplicate.exists) throw new Error("이미 해당 직원을 칭찬했습니다.");
+      if (duplicate.exists) throw new Error("동일 직원은 하루에 한 번만 칭찬할 수 있습니다.");
       tx.set(ref, {
         writerId,
         writerName: writer.name,
