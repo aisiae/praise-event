@@ -1,11 +1,9 @@
 import { NextResponse } from "next/server";
-import { getPublicData } from "@/lib/data";
-
-export const dynamic = "force-dynamic";
+import { getCachedPublicData } from "@/lib/data";
 
 export async function GET() {
   try {
-    return NextResponse.json(await getPublicData());
+    return NextResponse.json(await getCachedPublicData());
   } catch (error) {
     console.error(error);
     return NextResponse.json(

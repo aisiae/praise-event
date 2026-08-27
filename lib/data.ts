@@ -1,4 +1,5 @@
 import { FieldValue } from "firebase-admin/firestore";
+import { unstable_cache } from "next/cache";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { ACTIVE, serialize, todaySeoul } from "@/lib/utils";
 
@@ -64,6 +65,13 @@ export async function getPublicData() {
     stats: { employeeCount: employees.length, praiseCount: praises.length, todayAttendance: attendanceSnap.size },
   });
 }
+
+// Public data contains several full-collection queries. Share the result between
+// visitors for a short window so a traffic spike does not exhaust Firestore reads.
+export const getCachedPublicData = unstable_cache(getPublicData, ["public-event-data"], {
+  revalidate: 30,
+  tags: ["public-event-data"],
+});
 
 export async function logAdmin(action: string, target = "", detail = "") {
   const adminDb = getAdminDb();

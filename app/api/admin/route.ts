@@ -2,20 +2,21 @@ import { FieldValue } from "firebase-admin/firestore";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { getAdminDb } from "@/lib/firebase-admin";
-import { defaultSettings, getPublicData, getSettings, logAdmin } from "@/lib/data";
+import { defaultSettings, getCachedPublicData, getSettings, logAdmin } from "@/lib/data";
 import { ACTIVE, normalizeEmployeeId, normalizeEmployeeName, serialize } from "@/lib/utils";
 
 async function adminData() {
   const adminDb = getAdminDb();
-  const [employees, prizes, settings, results, standings, praises, currentResult] = await Promise.all([
+  const [employees, prizes, settings, results, praises, attendance, currentResult] = await Promise.all([
     adminDb.collection("employees").orderBy("name").get(),
     adminDb.collection("prizes").orderBy("order").get(),
     getSettings(),
     adminDb.collection("drawResults").orderBy("drawnAt", "desc").get(),
-    ticketCandidates(),
     adminDb.collection("praises").orderBy("createdAt", "desc").get(),
+    adminDb.collection("attendance").get(),
     adminDb.doc("config/currentResult").get(),
   ]);
+  const standings = calculateTicketCandidates(employees.docs, praises.docs, attendance.docs);
   return serialize({
     employees: employees.docs.map((doc) => {
       const data = doc.data();
@@ -56,26 +57,25 @@ function parseEmployees(text: string) {
     });
 }
 
-async function ticketCandidates() {
-  const adminDb = getAdminDb();
-  const [employeesSnap, praisesSnap, attendanceSnap] = await Promise.all([
-    adminDb.collection("employees").get(),
-    adminDb.collection("praises").where("status", "==", "게시").get(),
-    adminDb.collection("attendance").get(),
-  ]);
+function calculateTicketCandidates(
+  employeeDocs: FirebaseFirestore.QueryDocumentSnapshot[],
+  praiseDocs: FirebaseFirestore.QueryDocumentSnapshot[],
+  attendanceDocs: FirebaseFirestore.QueryDocumentSnapshot[],
+) {
   const sent = new Map<string, number>();
   const received = new Map<string, number>();
   const attendance = new Map<string, number>();
-  praisesSnap.docs.forEach((doc) => {
+  praiseDocs.forEach((doc) => {
     const row = doc.data();
+    if (row.status !== "게시") return;
     sent.set(row.writerId, (sent.get(row.writerId) || 0) + 1);
     received.set(row.targetId, (received.get(row.targetId) || 0) + 1);
   });
-  attendanceSnap.docs.forEach((doc) => {
+  attendanceDocs.forEach((doc) => {
     const id = doc.data().employeeId;
     attendance.set(id, (attendance.get(id) || 0) + 1);
   });
-  return employeesSnap.docs.filter((doc) => !["휴직", "퇴직"].includes(String(doc.data().status))).map((doc) => ({
+  return employeeDocs.filter((doc) => !["휴직", "퇴직"].includes(String(doc.data().status))).map((doc) => ({
     employeeId: doc.id,
     name: doc.data().name,
     attendance: attendance.get(doc.id) || 0,
@@ -83,6 +83,16 @@ async function ticketCandidates() {
     received: received.get(doc.id) || 0,
     tickets: (sent.get(doc.id) || 0) + (received.get(doc.id) || 0) + (attendance.get(doc.id) || 0),
   }));
+}
+
+async function ticketCandidates() {
+  const adminDb = getAdminDb();
+  const [employees, praises, attendance] = await Promise.all([
+    adminDb.collection("employees").get(),
+    adminDb.collection("praises").get(),
+    adminDb.collection("attendance").get(),
+  ]);
+  return calculateTicketCandidates(employees.docs, praises.docs, attendance.docs);
 }
 
 function weightedPick<T extends { tickets: number }>(items: T[]) {
@@ -311,7 +321,7 @@ export async function POST(request: NextRequest) {
       throw new Error("지원하지 않는 작업입니다.");
     }
 
-    return NextResponse.json({ ...(await adminData()), publicData: await getPublicData() });
+    return NextResponse.json({ ...(await adminData()), publicData: await getCachedPublicData() });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "관리자 작업에 실패했습니다." },

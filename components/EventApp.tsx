@@ -134,7 +134,7 @@ export default function EventApp() {
   const [employeeText, setEmployeeText] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const refresh = async () => setData(await jsonFetch<PublicData>("/api/public", { cache: "no-store" }));
+  const refresh = async () => setData(await jsonFetch<PublicData>("/api/public"));
 
   useEffect(() => {
     refresh().catch((error) => setNotice(error.message));
@@ -316,25 +316,6 @@ export default function EventApp() {
       setBusy(false);
     }
   };
-
-  useEffect(() => {
-    if (!admin || (adminTab !== "status" && adminTab !== "results")) return;
-    const timer = window.setInterval(async () => {
-      try {
-        const current = getFirebaseAuth().currentUser;
-        if (!current) return;
-        const token = await current.getIdToken();
-        const latest = await jsonFetch<AdminData>("/api/admin", {
-          headers: { Authorization: `Bearer ${token}` },
-          cache: "no-store",
-        });
-        setAdmin(latest);
-      } catch {
-        // 다음 주기에 다시 시도합니다.
-      }
-    }, 10000);
-    return () => window.clearInterval(timer);
-  }, [adminTab, admin]);
 
   const logoutEmployee = () => {
     setUser(null);
