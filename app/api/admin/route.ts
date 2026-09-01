@@ -1,6 +1,6 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { NextRequest, NextResponse } from "next/server";
-import { updateTag } from "next/cache";
+import { revalidateTag } from "next/cache";
 import { requireAdmin } from "@/lib/auth";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { ensureLegacyEvent, eventCollection, eventDocs, getActiveEvent, getEvent, LEGACY_EVENT_ID, listEvents, type EventType } from "@/lib/events";
@@ -150,7 +150,7 @@ export async function POST(request: NextRequest) {
       const eventId = String(body.eventId || ""); await adminDb.collection("events").doc(eventId).set({ showResults: Boolean(body.visible), updatedAt: FieldValue.serverTimestamp() }, { merge: true }); await logAdmin(body.visible ? "이벤트 결과 다시 공개" : "이벤트 결과 숨김", eventId);
     } else throw new Error("지원하지 않는 작업입니다.");
 
-    updateTag("public-event-data");
+    revalidateTag("public-event-data", { expire: 0 });
     return NextResponse.json({ ...(await adminData(selectedEventId || undefined)), publicData: await getCachedPublicData() });
   } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "관리자 작업에 실패했습니다." }, { status: 400 }); }
 }

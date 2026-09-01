@@ -365,6 +365,18 @@ export default function EventApp() {
     }
   };
 
+  const loadAdminEvent = async (eventId: string) => {
+    setAdminTab("settings");
+    setBusy(true);
+    try {
+      await adminRequest({ action: "loadEvent", eventId });
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "이벤트를 불러오지 못했습니다.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const logoutEmployee = () => {
     setUser(null);
     setStickerStatus(emptyStickerStatus);
@@ -440,7 +452,7 @@ export default function EventApp() {
                 <aside className="event-sidebar panel">
                   <div className="event-sidebar-head"><strong>이벤트 목록</strong><span>{admin.events.length}</span></div>
                   <div className="event-list">
-                    {admin.events.map((event) => <button key={event.id} className={admin.selectedEventId === event.id ? "active" : ""} onClick={() => adminRequest({ action: "loadEvent", eventId: event.id })}>
+                    {admin.events.map((event) => <button key={event.id} className={adminTab !== "employees" && admin.selectedEventId === event.id ? "active" : ""} disabled={busy} onClick={() => loadAdminEvent(event.id)}>
                       <span>{event.type === "quiz" ? "Q" : "♥"}</span><div><strong>{event.eventName}</strong><small>{event.status === "active" ? "진행 중" : event.status === "closed" ? "종료" : "준비 중"}</small></div>
                     </button>)}
                   </div>
@@ -448,6 +460,10 @@ export default function EventApp() {
                     <button className="button secondary" disabled={busy} onClick={() => runAdmin({ action: "createEvent", type: "quiz" }, "새 퀴즈 이벤트를 만들었습니다.")}>+ 퀴즈 이벤트</button>
                     <button className="button secondary" disabled={busy} onClick={() => runAdmin({ action: "createEvent", type: "praise" }, "새 칭찬 이벤트를 만들었습니다.")}>+ 칭찬 이벤트</button>
                     <button className="button secondary" disabled={busy} onClick={() => runAdmin({ action: "copyEvent" }, "이벤트 설정을 복사했습니다.")}>선택 이벤트 복사</button>
+                  </div>
+                  <div className="common-admin-nav">
+                    <span>공통 관리</span>
+                    <button className={adminTab === "employees" ? "active" : ""} onClick={() => setAdminTab("employees")}><strong>👥 명단 관리</strong><small>모든 이벤트에서 함께 사용</small></button>
                   </div>
                 </aside>
                 <div className="admin-content">
@@ -459,7 +475,6 @@ export default function EventApp() {
                   ...(admin.settings.type === "praise" ? [["posts", "게시글 관리"]] : []),
                   ["status", "이벤트 현황"],
                   ["results", "결과"],
-                  ["employees", "명단 관리"],
                 ] as Array<[typeof adminTab, string]>).map(([id, label]) => <button key={id} className={adminTab === id ? "active" : ""} onClick={() => setAdminTab(id)}>{label}</button>)}
               </nav>
 

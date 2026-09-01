@@ -1,6 +1,6 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { NextRequest, NextResponse } from "next/server";
-import { updateTag } from "next/cache";
+import { revalidateTag } from "next/cache";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { eventCollection, getActiveEvent, LEGACY_EVENT_ID } from "@/lib/events";
 import { ACTIVE, isEventOpen, normalizeEmployeeId, normalizeEmployeeName, todaySeoul } from "@/lib/utils";
@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
         createdAt: FieldValue.serverTimestamp(),
       });
     });
-    updateTag("public-event-data");
+    revalidateTag("public-event-data", { expire: 0 });
 
     return NextResponse.json({
       ok: true,
@@ -98,7 +98,7 @@ export async function PATCH(request: NextRequest) {
       content,
       updatedAt: FieldValue.serverTimestamp(),
     });
-    updateTag("public-event-data");
+    revalidateTag("public-event-data", { expire: 0 });
     return NextResponse.json({ ok: true, content });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "칭찬글을 수정하지 못했습니다." }, { status: 400 });
@@ -110,7 +110,7 @@ export async function DELETE(request: NextRequest) {
     const body = await request.json();
     const { praiseId, praiseSource } = await requirePraiseOwner(body);
     await praiseSource.doc(praiseId).delete();
-    updateTag("public-event-data");
+    revalidateTag("public-event-data", { expire: 0 });
     return NextResponse.json({ ok: true });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "칭찬글을 삭제하지 못했습니다." }, { status: 400 });

@@ -1,6 +1,6 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { NextRequest, NextResponse } from "next/server";
-import { updateTag } from "next/cache";
+import { revalidateTag } from "next/cache";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { eventCollection, getActiveEvent, LEGACY_EVENT_ID } from "@/lib/events";
 import { ACTIVE, isEventOpen, normalizeEmployeeId, normalizeEmployeeName, serialize, todaySeoul } from "@/lib/utils";
@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
           attendanceAwarded = true;
         }
       });
-      if (attendanceAwarded) updateTag("public-event-data");
+      if (attendanceAwarded) revalidateTag("public-event-data", { expire: 0 });
     }
 
     let stickerStatus = { attendance: attendanceAwarded ? 1 : 0, sent: 0, received: 0, total: attendanceAwarded ? 1 : 0 };
