@@ -12,6 +12,7 @@ export type EventRecord = typeof defaultSettings & {
   type: EventType;
   status: EventStatus;
   copiedFrom?: string;
+  order?: number;
 };
 
 function normalizeEvent(id: string, value: FirebaseFirestore.DocumentData = {}): EventRecord {
@@ -86,7 +87,7 @@ export async function listEvents() {
   const snap = await adminDb.collection("events").orderBy("createdAt", "desc").get();
   const rows = snap.docs.map((doc) => normalizeEvent(doc.id, doc.data()));
   if (!rows.some((row) => row.id === LEGACY_EVENT_ID)) rows.push(await getEvent(LEGACY_EVENT_ID));
-  return serialize(rows) as EventRecord[];
+  return serialize(rows.sort((a, b) => Number(a.order ?? 9999) - Number(b.order ?? 9999))) as EventRecord[];
 }
 
 export function eventCollection(eventId: string, name: string) {

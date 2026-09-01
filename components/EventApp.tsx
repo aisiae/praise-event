@@ -367,6 +367,10 @@ export default function EventApp() {
 
   const loadAdminEvent = async (eventId: string) => {
     setAdminTab("settings");
+    const selected = admin?.events.find((event) => event.id === eventId);
+    if (admin && selected) {
+      setAdmin({ ...admin, selectedEventId: eventId, settings: selected, prizes: [], praises: [], quizzes: [], responses: [], standings: [] });
+    }
     setBusy(true);
     try {
       await adminRequest({ action: "loadEvent", eventId });
@@ -452,9 +456,14 @@ export default function EventApp() {
                 <aside className="event-sidebar panel">
                   <div className="event-sidebar-head"><strong>이벤트 목록</strong><span>{admin.events.length}</span></div>
                   <div className="event-list">
-                    {admin.events.map((event) => <button key={event.id} className={adminTab !== "employees" && admin.selectedEventId === event.id ? "active" : ""} disabled={busy} onClick={() => loadAdminEvent(event.id)}>
-                      <span>{event.type === "quiz" ? "Q" : "♥"}</span><div><strong>{event.eventName}</strong><small>{event.status === "active" ? "진행 중" : event.status === "closed" ? "종료" : "준비 중"}</small></div>
-                    </button>)}
+                    {admin.events.map((event, index) => <div className={`event-list-row ${adminTab !== "employees" && admin.selectedEventId === event.id ? "active" : ""}`} key={event.id}>
+                      <button className="event-select-button" disabled={busy} onClick={() => loadAdminEvent(event.id)}><span>{event.type === "quiz" ? "Q" : "♥"}</span><div><strong>{event.eventName}</strong><small>{event.status === "active" ? "진행 중" : event.status === "closed" ? "종료" : "준비 중"}</small></div></button>
+                      <div className="event-row-actions">
+                        <button aria-label={`${event.eventName} 위로 이동`} title="위로 이동" disabled={busy || index === 0} onClick={() => runAdmin({ action: "moveEvent", eventId: event.id, direction: "up" }, "이벤트 순서를 변경했습니다.")}>↑</button>
+                        <button aria-label={`${event.eventName} 아래로 이동`} title="아래로 이동" disabled={busy || index === admin.events.length - 1} onClick={() => runAdmin({ action: "moveEvent", eventId: event.id, direction: "down" }, "이벤트 순서를 변경했습니다.")}>↓</button>
+                        <button className="event-delete-button" aria-label={`${event.eventName} 삭제`} title={event.id === "praise-legacy" || event.id === admin.activeEventId ? "활성 또는 기존 이벤트는 삭제할 수 없습니다" : "이벤트 삭제"} disabled={busy || event.id === "praise-legacy" || event.id === admin.activeEventId} onClick={() => confirm(`'${event.eventName}' 이벤트를 삭제할까요? 참여 기록도 함께 삭제되며 복구할 수 없습니다.`) && runAdmin({ action: "deleteEvent", eventId: event.id }, "이벤트를 삭제했습니다.")}>×</button>
+                      </div>
+                    </div>)}
                   </div>
                   <div className="event-create-actions">
                     <button className="button secondary" disabled={busy} onClick={() => runAdmin({ action: "createEvent", type: "quiz" }, "새 퀴즈 이벤트를 만들었습니다.")}>+ 퀴즈 이벤트</button>

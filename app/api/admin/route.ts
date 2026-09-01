@@ -74,6 +74,17 @@ async function replaceSubcollection(eventId: string, name: string, rows: any[], 
   await batch.commit();
 }
 
+async function deleteCollectionInChunks(collection: FirebaseFirestore.CollectionReference) {
+  while (true) {
+    const snap = await collection.limit(400).get();
+    if (snap.empty) return;
+    const batch = getAdminDb().batch();
+    snap.docs.forEach((doc) => batch.delete(doc.ref));
+    await batch.commit();
+    if (snap.size < 400) return;
+  }
+}
+
 export async function GET(request: NextRequest) {
   try { await requireAdmin(request); return NextResponse.json(await adminData(request.nextUrl.searchParams.get("eventId") || undefined)); }
   catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "권한이 없습니다." }, { status: 401 }); }
@@ -86,9 +97,11 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const action = String(body.action || "");
     let selectedEventId = String(body.eventId || "");
+    let refreshPublic = false;
 
     if (action === "loadEvent") {
       selectedEventId = String(body.eventId || "");
+      return NextResponse.json(await adminData(selectedEventId));
     } else if (action === "importEmployees") {
       const rows = parseEmployees(String(body.text || ""));
       if (!rows.length) throw new Error("등록할 직원 명단이 없습니다.");
@@ -97,13 +110,16 @@ export async function POST(request: NextRequest) {
       const batch = adminDb.batch(); old.docs.forEach((doc) => batch.delete(doc.ref));
       rows.forEach((row) => batch.set(adminDb.collection("employees").doc(row.employeeId), { name: row.name, status: row.status, updatedAt: FieldValue.serverTimestamp() }));
       await batch.commit(); await logAdmin("직원 명단 일괄 등록", "", `${rows.length}명`);
+      refreshPublic = true;
     } else if (action === "updateEmployee") {
       const employeeId = normalizeEmployeeId(body.employeeId); const name = normalizeEmployeeName(body.name); const status = String(body.status || "");
       if (!employeeId || !name || !["재직", "휴직", "퇴직"].includes(status)) throw new Error("직원 정보를 확인해 주세요.");
       await adminDb.collection("employees").doc(employeeId).update({ name, status, updatedAt: FieldValue.serverTimestamp() }); await logAdmin("직원 정보 수정", employeeId, `${name} / ${status}`);
+      refreshPublic = true;
     } else if (action === "deleteEmployee") {
       const employeeId = normalizeEmployeeId(body.employeeId); if (!employeeId) throw new Error("삭제할 직원을 확인해 주세요.");
       await adminDb.collection("employees").doc(employeeId).delete(); await logAdmin("직원 삭제", employeeId);
+      refreshPublic = true;
     } else if (action === "createEvent") {
       const type: EventType = body.type === "quiz" ? "quiz" : "praise"; const ref = adminDb.collection("events").doc(); selectedEventId = ref.id;
       await ref.set({
@@ -122,35 +138,68 @@ export async function POST(request: NextRequest) {
       const [sourcePrizes, sourceQuizzes] = await Promise.all([eventDocs(sourceId, "prizes"), source.type === "quiz" ? eventDocs(sourceId, "quizzes") : Promise.resolve([])]);
       const batch = adminDb.batch(); sourcePrizes.forEach((doc) => batch.set(eventCollection(selectedEventId, "prizes").doc(), { ...doc.data(), copiedAt: FieldValue.serverTimestamp() })); sourceQuizzes.forEach((doc) => batch.set(eventCollection(selectedEventId, "quizzes").doc(doc.id), { ...doc.data(), copiedAt: FieldValue.serverTimestamp() })); await batch.commit();
       await logAdmin("이벤트 복사", selectedEventId, sourceId);
+    } else if (action === "moveEvent") {
+      const eventId = String(body.eventId || "");
+      const direction = body.direction === "up" ? -1 : 1;
+      const events = await listEvents();
+      const index = events.findIndex((event) => event.id === eventId);
+      const targetIndex = index + direction;
+      if (index < 0 || targetIndex < 0 || targetIndex >= events.length) throw new Error("더 이상 이동할 수 없습니다.");
+      [events[index], events[targetIndex]] = [events[targetIndex], events[index]];
+      const batch = adminDb.batch();
+      events.forEach((event, order) => batch.set(adminDb.collection("events").doc(event.id), { order, updatedAt: FieldValue.serverTimestamp() }, { merge: true }));
+      await batch.commit();
+      selectedEventId = eventId;
+      await logAdmin("이벤트 순서 변경", eventId, direction < 0 ? "위로" : "아래로");
+    } else if (action === "deleteEvent") {
+      const eventId = String(body.eventId || "");
+      if (!eventId || eventId === LEGACY_EVENT_ID) throw new Error("기존 첫 칭찬 이벤트는 삭제할 수 없습니다.");
+      const active = await getActiveEvent();
+      if (active.id === eventId) throw new Error("현재 활성 이벤트는 삭제할 수 없습니다. 다른 이벤트를 먼저 활성화해 주세요.");
+      for (const name of ["prizes", "quizzes", "responses", "attendance", "praises", "meta"]) {
+        await deleteCollectionInChunks(eventCollection(eventId, name));
+      }
+      await adminDb.collection("events").doc(eventId).delete();
+      selectedEventId = active.id;
+      await logAdmin("이벤트 삭제", eventId);
     } else if (action === "activateEvent") {
       const eventId = String(body.eventId || ""); const next = await getEvent(eventId); if (!next.startDate || !next.endDate) throw new Error("활성화하기 전에 시작일과 종료일을 설정해 주세요.");
       const active = await getActiveEvent(); const batch = adminDb.batch();
       if (active.id !== eventId) batch.set(adminDb.collection("events").doc(active.id), { status: "closed", updatedAt: FieldValue.serverTimestamp() }, { merge: true });
       batch.set(adminDb.collection("events").doc(eventId), { status: "active", updatedAt: FieldValue.serverTimestamp() }, { merge: true }); batch.set(adminDb.doc("config/activeEvent"), { eventId, updatedAt: FieldValue.serverTimestamp() }); await batch.commit(); selectedEventId = eventId;
       await logAdmin("이벤트 활성화", eventId, next.eventName);
+      refreshPublic = true;
     } else if (action === "saveSettings") {
       const eventId = String(body.eventId || ""); const current = await getEvent(eventId); const settings = body.settings || {};
       await adminDb.collection("events").doc(eventId).set({ eventName: String(settings.eventName || current.eventName), intro: String(settings.intro || ""), startDate: String(settings.startDate || ""), endDate: String(settings.endDate || ""), showResults: Boolean(settings.showResults), minChars: Math.max(10, Number(settings.minChars || 20)), detailSchedule: String(settings.detailSchedule || ""), detailAttendance: String(settings.detailAttendance || ""), detailPrizes: String(settings.detailPrizes || ""), detailNotes: String(settings.detailNotes || ""), type: current.type, status: current.status, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
       await logAdmin("이벤트 설정 저장", eventId);
+      refreshPublic = eventId === (await getActiveEvent()).id;
     } else if (action === "savePrizes") {
       const eventId = String(body.eventId || ""); const rows = (body.prizes || []).map((prize: any, index: number) => ({ name: String(prize.name || "").trim(), amount: Math.max(0, Number(prize.amount || 0)), quantity: Math.max(1, Number(prize.quantity || 1)), active: true, order: index + 1 }));
       await replaceSubcollection(eventId, "prizes", rows, (_row, index) => `prize-${index + 1}`); await logAdmin("상품 저장", eventId, `${rows.length}개`);
+      refreshPublic = eventId === (await getActiveEvent()).id;
     } else if (action === "saveQuizzes") {
       const eventId = String(body.eventId || "");
       const rows = (body.quizzes || []).map((quiz: any) => { const options = (quiz.options || []).map((option: unknown) => String(option).trim()).filter(Boolean); if (!/^\d{4}-\d{2}-\d{2}$/.test(String(quiz.date || "")) || !String(quiz.question || "").trim() || options.length < 2) throw new Error("퀴즈 날짜, 문제와 선택지를 확인해 주세요."); return { date: String(quiz.date), question: String(quiz.question).trim(), options, correctIndex: Math.min(options.length - 1, Math.max(0, Number(quiz.correctIndex || 0))), subject: String(quiz.subject || ""), explanation: String(quiz.explanation || ""), updatedAt: FieldValue.serverTimestamp() }; });
       await replaceSubcollection(eventId, "quizzes", rows, (row) => row.date); await logAdmin("퀴즈 저장", eventId, `${rows.length}문제`);
+      refreshPublic = eventId === (await getActiveEvent()).id;
     } else if (action === "deletePraise") {
       const eventId = String(body.eventId || ""); const source = eventId === LEGACY_EVENT_ID ? adminDb.collection("praises") : eventCollection(eventId, "praises"); await source.doc(String(body.praiseId || "")).delete(); await logAdmin("칭찬 게시글 삭제", String(body.praiseId || ""), eventId);
+      refreshPublic = eventId === (await getActiveEvent()).id;
     } else if (action === "publishResults") {
       const eventId = String(body.eventId || ""); const current = await adminData(eventId) as any;
       const slots = current.prizes.flatMap((prize: any) => Array.from({ length: Math.max(1, Number(prize.quantity || 1)) }, () => prize));
       const results = slots.map((prize: any, index: number) => ({ rank: index + 1, prizeName: prize.name, amount: prize.amount, employeeId: current.standings[index]?.employeeId || "", winnerName: current.standings[index]?.name || "", tickets: current.standings[index]?.tickets || 0 }));
       await Promise.all([eventCollection(eventId, "meta").doc("currentResult").set({ results, publishedAt: FieldValue.serverTimestamp() }), adminDb.collection("events").doc(eventId).set({ showResults: true, updatedAt: FieldValue.serverTimestamp() }, { merge: true })]); await logAdmin("이벤트 결과 공개", eventId, `${results.length}개 순위`);
+      refreshPublic = eventId === (await getActiveEvent()).id;
     } else if (action === "toggleResultsVisibility") {
       const eventId = String(body.eventId || ""); await adminDb.collection("events").doc(eventId).set({ showResults: Boolean(body.visible), updatedAt: FieldValue.serverTimestamp() }, { merge: true }); await logAdmin(body.visible ? "이벤트 결과 다시 공개" : "이벤트 결과 숨김", eventId);
+      refreshPublic = eventId === (await getActiveEvent()).id;
     } else throw new Error("지원하지 않는 작업입니다.");
 
+    const nextAdminData = await adminData(selectedEventId || undefined);
+    if (!refreshPublic) return NextResponse.json(nextAdminData);
     revalidateTag("public-event-data", { expire: 0 });
-    return NextResponse.json({ ...(await adminData(selectedEventId || undefined)), publicData: await getCachedPublicData() });
+    return NextResponse.json({ ...nextAdminData, publicData: await getCachedPublicData() });
   } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "관리자 작업에 실패했습니다." }, { status: 400 }); }
 }
