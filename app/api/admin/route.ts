@@ -1,54 +1,18 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { NextRequest, NextResponse } from "next/server";
+import { updateTag } from "next/cache";
 import { requireAdmin } from "@/lib/auth";
 import { getAdminDb } from "@/lib/firebase-admin";
-import { defaultSettings, getCachedPublicData, getSettings, logAdmin } from "@/lib/data";
+import { ensureLegacyEvent, eventCollection, eventDocs, getActiveEvent, getEvent, LEGACY_EVENT_ID, listEvents, type EventType } from "@/lib/events";
+import { defaultSettings } from "@/lib/settings";
+import { getCachedPublicData, logAdmin } from "@/lib/data";
 import { ACTIVE, normalizeEmployeeId, normalizeEmployeeName, serialize } from "@/lib/utils";
-
-async function adminData() {
-  const adminDb = getAdminDb();
-  const [employees, prizes, settings, results, praises, attendance, currentResult] = await Promise.all([
-    adminDb.collection("employees").orderBy("name").get(),
-    adminDb.collection("prizes").orderBy("order").get(),
-    getSettings(),
-    adminDb.collection("drawResults").orderBy("drawnAt", "desc").get(),
-    adminDb.collection("praises").orderBy("createdAt", "desc").get(),
-    adminDb.collection("attendance").get(),
-    adminDb.doc("config/currentResult").get(),
-  ]);
-  const standings = calculateTicketCandidates(employees.docs, praises.docs, attendance.docs);
-  return serialize({
-    employees: employees.docs.map((doc) => {
-      const data = doc.data();
-      return {
-        id: doc.id,
-        ...data,
-        status: ["재직", "휴직", "퇴직"].includes(String(data.status)) ? data.status : ACTIVE,
-      };
-    }),
-    prizes: prizes.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
-    settings,
-    results: results.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
-    standings: standings.sort((a, b) => b.tickets - a.tickets || a.name.localeCompare(b.name, "ko")),
-    praises: praises.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
-    hasPublishedResult: currentResult.exists,
-    resultPublished: currentResult.exists && Boolean(settings.showResults),
-  }) as Record<string, unknown>;
-}
 
 function parseEmployees(text: string) {
   const seen = new Set<string>();
-  return text
-    .trim()
-    .split(/\r?\n/)
+  return text.trim().split(/\r?\n/)
     .map((line) => (line.includes("\t") ? line.split("\t") : line.split(",")))
-    .map((cols) => ({
-      name: normalizeEmployeeName(cols[0]),
-      employeeId: normalizeEmployeeId(cols[1]),
-      status: ["재직", "휴직", "퇴직"].includes(String(cols[2] || "").trim())
-        ? String(cols[2]).trim()
-        : ACTIVE,
-    }))
+    .map((cols) => ({ name: normalizeEmployeeName(cols[0]), employeeId: normalizeEmployeeId(cols[1]), status: ["재직", "휴직", "퇴직"].includes(String(cols[2] || "").trim()) ? String(cols[2]).trim() : ACTIVE }))
     .filter((row) => {
       if (!row.employeeId || !row.name || /사번/.test(row.employeeId)) return false;
       if (seen.has(row.employeeId)) throw new Error(`사번 ${row.employeeId}이 중복되었습니다.`);
@@ -57,275 +21,136 @@ function parseEmployees(text: string) {
     });
 }
 
-function calculateTicketCandidates(
-  employeeDocs: FirebaseFirestore.QueryDocumentSnapshot[],
-  praiseDocs: FirebaseFirestore.QueryDocumentSnapshot[],
-  attendanceDocs: FirebaseFirestore.QueryDocumentSnapshot[],
-) {
+function praiseStandings(employeeDocs: FirebaseFirestore.QueryDocumentSnapshot[], praiseDocs: FirebaseFirestore.QueryDocumentSnapshot[], attendanceDocs: FirebaseFirestore.QueryDocumentSnapshot[]) {
   const sent = new Map<string, number>();
   const received = new Map<string, number>();
   const attendance = new Map<string, number>();
-  praiseDocs.forEach((doc) => {
-    const row = doc.data();
-    if (row.status !== "게시") return;
-    sent.set(row.writerId, (sent.get(row.writerId) || 0) + 1);
-    received.set(row.targetId, (received.get(row.targetId) || 0) + 1);
-  });
-  attendanceDocs.forEach((doc) => {
-    const id = doc.data().employeeId;
-    attendance.set(id, (attendance.get(id) || 0) + 1);
-  });
+  praiseDocs.forEach((doc) => { const row = doc.data(); if (row.status === "게시") { sent.set(row.writerId, (sent.get(row.writerId) || 0) + 1); received.set(row.targetId, (received.get(row.targetId) || 0) + 1); } });
+  attendanceDocs.forEach((doc) => { const id = String(doc.data().employeeId || ""); attendance.set(id, (attendance.get(id) || 0) + 1); });
   return employeeDocs.filter((doc) => !["휴직", "퇴직"].includes(String(doc.data().status))).map((doc) => ({
-    employeeId: doc.id,
-    name: doc.data().name,
-    attendance: attendance.get(doc.id) || 0,
-    sent: sent.get(doc.id) || 0,
-    received: received.get(doc.id) || 0,
+    employeeId: doc.id, name: doc.data().name, attendance: attendance.get(doc.id) || 0, sent: sent.get(doc.id) || 0, received: received.get(doc.id) || 0,
     tickets: (sent.get(doc.id) || 0) + (received.get(doc.id) || 0) + (attendance.get(doc.id) || 0),
   }));
 }
 
-async function ticketCandidates() {
+function quizStandings(employeeDocs: FirebaseFirestore.QueryDocumentSnapshot[], responseDocs: FirebaseFirestore.QueryDocumentSnapshot[]) {
+  const participation = new Map<string, number>();
+  const correct = new Map<string, number>();
+  responseDocs.forEach((doc) => { const row = doc.data(); const id = String(row.employeeId || ""); participation.set(id, (participation.get(id) || 0) + 1); if (row.correct) correct.set(id, (correct.get(id) || 0) + 1); });
+  return employeeDocs.filter((doc) => !["휴직", "퇴직"].includes(String(doc.data().status))).map((doc) => ({ employeeId: doc.id, name: doc.data().name, attendance: participation.get(doc.id) || 0, sent: 0, received: correct.get(doc.id) || 0, tickets: participation.get(doc.id) || 0 }));
+}
+
+async function adminData(selectedId?: string) {
+  await ensureLegacyEvent();
   const adminDb = getAdminDb();
-  const [employees, praises, attendance] = await Promise.all([
-    adminDb.collection("employees").get(),
-    adminDb.collection("praises").get(),
-    adminDb.collection("attendance").get(),
+  const activeEvent = await getActiveEvent();
+  const selectedEvent = await getEvent(selectedId || activeEvent.id);
+  const [events, employees, prizes, praises, attendance, quizzes, responses, result] = await Promise.all([
+    listEvents(), adminDb.collection("employees").orderBy("name").get(), eventDocs(selectedEvent.id, "prizes"),
+    selectedEvent.type === "praise" ? eventDocs(selectedEvent.id, "praises") : Promise.resolve([]), eventDocs(selectedEvent.id, "attendance"),
+    selectedEvent.type === "quiz" ? eventDocs(selectedEvent.id, "quizzes") : Promise.resolve([]), selectedEvent.type === "quiz" ? eventDocs(selectedEvent.id, "responses") : Promise.resolve([]),
+    eventCollection(selectedEvent.id, "meta").doc("currentResult").get(),
   ]);
-  return calculateTicketCandidates(employees.docs, praises.docs, attendance.docs);
+  const standings = selectedEvent.type === "quiz" ? quizStandings(employees.docs, responses) : praiseStandings(employees.docs, praises, attendance);
+  return serialize({
+    events, activeEventId: activeEvent.id, selectedEventId: selectedEvent.id,
+    employees: employees.docs.map((doc) => ({ id: doc.id, ...doc.data() })), settings: selectedEvent,
+    prizes: prizes.map((doc) => ({ id: doc.id, ...doc.data() })).sort((a: any, b: any) => Number(a.order || 999) - Number(b.order || 999)),
+    praises: praises.map((doc) => ({ id: doc.id, ...doc.data() })).sort((a: any, b: any) => b.createdAt?.toMillis?.() - a.createdAt?.toMillis?.()),
+    quizzes: quizzes.map((doc) => ({ id: doc.id, date: doc.id, ...doc.data() })).sort((a: any, b: any) => String(a.date).localeCompare(String(b.date))),
+    responses: responses.map((doc) => ({ id: doc.id, ...doc.data() })), standings: standings.sort((a, b) => b.tickets - a.tickets || b.received - a.received || a.name.localeCompare(b.name, "ko")),
+    hasPublishedResult: result.exists, resultPublished: result.exists && Boolean(selectedEvent.showResults), publishedResults: result.data()?.results || [],
+  }) as Record<string, unknown>;
 }
 
-function weightedPick<T extends { tickets: number }>(items: T[]) {
-  const total = items.reduce((sum, item) => sum + Math.max(1, item.tickets), 0);
-  let point = Math.random() * total;
-  for (const item of items) {
-    point -= Math.max(1, item.tickets);
-    if (point < 0) return item;
-  }
-  return items[items.length - 1];
-}
-
-async function deleteDocsInChunks(docs: Array<{ ref: FirebaseFirestore.DocumentReference }>) {
+async function replaceSubcollection(eventId: string, name: string, rows: any[], idFor: (row: any, index: number) => string) {
   const adminDb = getAdminDb();
-  for (let index = 0; index < docs.length; index += 450) {
-    const batch = adminDb.batch();
-    docs.slice(index, index + 450).forEach((doc) => batch.delete(doc.ref));
-    await batch.commit();
-  }
+  const target = eventId === LEGACY_EVENT_ID && ["prizes"].includes(name) ? adminDb.collection(name) : eventCollection(eventId, name);
+  const old = await target.get();
+  if (old.size + rows.length > 450) throw new Error("한 번에 저장할 수 있는 항목 수를 초과했습니다.");
+  const batch = adminDb.batch();
+  old.docs.forEach((doc) => batch.delete(doc.ref));
+  rows.forEach((row, index) => batch.set(target.doc(idFor(row, index)), { ...row, eventId }));
+  await batch.commit();
 }
 
 export async function GET(request: NextRequest) {
-  try {
-    await requireAdmin(request);
-    return NextResponse.json(await adminData());
-  } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "권한이 없습니다." }, { status: 401 });
-  }
+  try { await requireAdmin(request); return NextResponse.json(await adminData(request.nextUrl.searchParams.get("eventId") || undefined)); }
+  catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "권한이 없습니다." }, { status: 401 }); }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    await requireAdmin(request);
+    await requireAdmin(request); await ensureLegacyEvent();
     const adminDb = getAdminDb();
     const body = await request.json();
     const action = String(body.action || "");
+    let selectedEventId = String(body.eventId || "");
 
-    if (action === "importEmployees") {
+    if (action === "loadEvent") {
+      selectedEventId = String(body.eventId || "");
+    } else if (action === "importEmployees") {
       const rows = parseEmployees(String(body.text || ""));
       if (!rows.length) throw new Error("등록할 직원 명단이 없습니다.");
       const old = await adminDb.collection("employees").get();
-      const batch = adminDb.batch();
-      old.docs.forEach((doc) => batch.delete(doc.ref));
-      rows.forEach((row) => batch.set(adminDb.collection("employees").doc(row.employeeId), {
-        name: row.name,
-        status: row.status,
-        updatedAt: FieldValue.serverTimestamp(),
-      }));
-      await batch.commit();
-      await logAdmin("직원 명단 일괄 등록", "", `${rows.length}명`);
-    } else if (action === "updateEmployeeStatus") {
-      const employeeId = normalizeEmployeeId(body.employeeId);
-      const status = String(body.status || "");
-      if (!["재직", "휴직", "퇴직"].includes(status)) throw new Error("올바른 상태가 아닙니다.");
-      await adminDb.collection("employees").doc(employeeId).update({ status, updatedAt: FieldValue.serverTimestamp() });
-      await logAdmin("직원 상태 변경", employeeId, status);
+      if (old.size + rows.length > 450) throw new Error("직원 수가 일괄 등록 한도를 초과했습니다.");
+      const batch = adminDb.batch(); old.docs.forEach((doc) => batch.delete(doc.ref));
+      rows.forEach((row) => batch.set(adminDb.collection("employees").doc(row.employeeId), { name: row.name, status: row.status, updatedAt: FieldValue.serverTimestamp() }));
+      await batch.commit(); await logAdmin("직원 명단 일괄 등록", "", `${rows.length}명`);
     } else if (action === "updateEmployee") {
-      const employeeId = normalizeEmployeeId(body.employeeId);
-      const name = normalizeEmployeeName(body.name);
-      const status = String(body.status || "");
-      if (!employeeId || !name) throw new Error("이름과 사번을 확인해 주세요.");
-      if (!["재직", "휴직", "퇴직"].includes(status)) throw new Error("올바른 상태가 아닙니다.");
-      await adminDb.collection("employees").doc(employeeId).update({
-        name,
-        status,
-        updatedAt: FieldValue.serverTimestamp(),
-      });
-      await logAdmin("직원 정보 수정", employeeId, `${name} / ${status}`);
+      const employeeId = normalizeEmployeeId(body.employeeId); const name = normalizeEmployeeName(body.name); const status = String(body.status || "");
+      if (!employeeId || !name || !["재직", "휴직", "퇴직"].includes(status)) throw new Error("직원 정보를 확인해 주세요.");
+      await adminDb.collection("employees").doc(employeeId).update({ name, status, updatedAt: FieldValue.serverTimestamp() }); await logAdmin("직원 정보 수정", employeeId, `${name} / ${status}`);
     } else if (action === "deleteEmployee") {
-      const employeeId = normalizeEmployeeId(body.employeeId);
-      if (!employeeId) throw new Error("삭제할 직원을 확인해 주세요.");
-      await adminDb.collection("employees").doc(employeeId).delete();
-      await logAdmin("직원 삭제", employeeId);
-    } else if (action === "deletePraise") {
-      const praiseId = String(body.praiseId || "");
-      if (!praiseId) throw new Error("삭제할 게시글을 확인해 주세요.");
-      await adminDb.collection("praises").doc(praiseId).delete();
-      await logAdmin("칭찬 게시글 삭제", praiseId);
-    } else if (action === "saveSettings") {
-      await adminDb.doc("config/settings").set({
-        eventName: String(body.settings?.eventName || "칭찬 스티커 이벤트"),
-        intro: String(body.settings?.intro || ""),
-        startDate: String(body.settings?.startDate || ""),
-        endDate: String(body.settings?.endDate || ""),
-        showResults: Boolean(body.settings?.showResults),
-        minChars: Math.max(10, Number(body.settings?.minChars || 20)),
-        detailSchedule: String(body.settings?.detailSchedule || ""),
-        detailAttendance: String(body.settings?.detailAttendance || ""),
-        detailPrizes: String(body.settings?.detailPrizes || ""),
-        detailNotes: String(body.settings?.detailNotes || ""),
-      });
-      await logAdmin("이벤트 설정 저장");
-    } else if (action === "savePrizes") {
-      const old = await adminDb.collection("prizes").get();
-      const batch = adminDb.batch();
-      old.docs.forEach((doc) => batch.delete(doc.ref));
-      (body.prizes || []).forEach((prize: any, index: number) => {
-        const ref = adminDb.collection("prizes").doc();
-        batch.set(ref, {
-          name: String(prize.name || "").trim(),
-          amount: Math.max(0, Number(prize.amount || 0)),
-          quantity: Math.max(0, Number(prize.quantity || 0)),
-          active: true,
-          order: index + 1,
-        });
-      });
-      await batch.commit();
-      await logAdmin("상품 저장");
-    } else if (action === "publishResults") {
-      const [settings, prizesSnap, standings] = await Promise.all([
-        getSettings(),
-        adminDb.collection("prizes").where("active", "==", true).get(),
-        ticketCandidates(),
-      ]);
-      const prizes = prizesSnap.docs
-        .map((doc) => ({ id: doc.id, ...doc.data() } as any))
-        .sort((a, b) => Number(a.order || 999) - Number(b.order || 999));
-      const slots = prizes.flatMap((prize) => Array.from({ length: Math.max(1, Number(prize.quantity || 1)) }, () => prize));
-      const ranked = standings.sort((a, b) => b.tickets - a.tickets || a.name.localeCompare(b.name, "ko"));
-      const publishedResults = slots.map((prize, index) => ({
-        rank: index + 1,
-        prizeName: String(prize.name || ""),
-        amount: Number(prize.amount || 0),
-        employeeId: ranked[index]?.employeeId || "",
-        winnerName: ranked[index]?.name || "",
-        tickets: ranked[index]?.tickets || 0,
-      }));
-      const archiveRef = adminDb.collection("eventArchives").doc();
-      const batch = adminDb.batch();
-      batch.set(archiveRef, {
-        eventName: settings.eventName,
-        startDate: settings.startDate,
-        endDate: settings.endDate,
-        results: publishedResults,
-        publishedAt: FieldValue.serverTimestamp(),
-      });
-      batch.set(adminDb.doc("config/currentResult"), {
-        archiveId: archiveRef.id,
-        eventName: settings.eventName,
-        results: publishedResults,
-        publishedAt: FieldValue.serverTimestamp(),
-      });
-      batch.set(adminDb.doc("config/settings"), { showResults: true }, { merge: true });
-      await batch.commit();
-      await logAdmin("이벤트 결과 공개", archiveRef.id, `${publishedResults.length}개 순위`);
-    } else if (action === "toggleResultsVisibility") {
-      const visible = Boolean(body.visible);
-      if (visible) {
-        const currentResult = await adminDb.doc("config/currentResult").get();
-        if (!currentResult.exists) throw new Error("먼저 결과 공개를 진행해 주세요.");
-      }
-      await adminDb.doc("config/settings").set({ showResults: visible }, { merge: true });
-      await logAdmin(visible ? "이벤트 결과 다시 공개" : "이벤트 결과 숨김");
-    } else if (action === "createNewEvent") {
-      const [settings, prizesSnap, standings, praisesSnap, attendanceSnap, drawResultsSnap] = await Promise.all([
-        getSettings(),
-        adminDb.collection("prizes").get(),
-        ticketCandidates(),
-        adminDb.collection("praises").get(),
-        adminDb.collection("attendance").get(),
-        adminDb.collection("drawResults").get(),
-      ]);
-      const prizes = prizesSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() } as any)).sort((a, b) => Number(a.order || 999) - Number(b.order || 999));
-      const slots = prizes.flatMap((prize) => Array.from({ length: Math.max(1, Number(prize.quantity || 1)) }, () => prize));
-      const ranked = standings.sort((a, b) => b.tickets - a.tickets || a.name.localeCompare(b.name, "ko"));
-      const finalSnapshot = slots.map((prize, index) => ({
-        rank: index + 1,
-        prizeName: String(prize.name || ""),
-        amount: Number(prize.amount || 0),
-        employeeId: ranked[index]?.employeeId || "",
-        winnerName: ranked[index]?.name || "",
-        tickets: ranked[index]?.tickets || 0,
-      }));
-      await adminDb.collection("eventArchives").add({
-        eventName: settings.eventName,
-        startDate: settings.startDate,
-        endDate: settings.endDate,
-        results: finalSnapshot,
-        status: "closed",
-        closedAt: FieldValue.serverTimestamp(),
-      });
-      await Promise.all([
-        deleteDocsInChunks(praisesSnap.docs),
-        deleteDocsInChunks(attendanceSnap.docs),
-        deleteDocsInChunks(prizesSnap.docs),
-        deleteDocsInChunks(drawResultsSnap.docs),
-      ]);
-      await adminDb.doc("config/currentResult").delete();
-      await adminDb.doc("config/settings").set({
+      const employeeId = normalizeEmployeeId(body.employeeId); if (!employeeId) throw new Error("삭제할 직원을 확인해 주세요.");
+      await adminDb.collection("employees").doc(employeeId).delete(); await logAdmin("직원 삭제", employeeId);
+    } else if (action === "createEvent") {
+      const type: EventType = body.type === "quiz" ? "quiz" : "praise"; const ref = adminDb.collection("events").doc(); selectedEventId = ref.id;
+      await ref.set({
         ...defaultSettings,
-        eventName: "새 칭찬 스티커 이벤트",
-        showResults: false,
+        eventName: type === "quiz" ? "새 오늘의 퀴즈" : "새 칭찬 우체국",
+        intro: type === "quiz" ? "매일 한 문제, 동료를 알아가는 즐거운 출석 퀴즈입니다." : defaultSettings.intro,
+        detailAttendance: type === "quiz" ? "이름과 사번으로 인증한 뒤 오늘의 퀴즈를 제출하면 출석과 추첨권 1장이 인정됩니다. 정답 여부는 추첨권 수에 영향을 주지 않습니다." : "이벤트 기간 중 하루 1회 로그인하면 출석 스티커 1장이 지급됩니다.\n칭찬을 작성하거나 받으면 각각 스티커 1장이 추가됩니다.",
+        detailNotes: type === "quiz" ? "한 직원은 하루에 한 번만 답을 제출할 수 있습니다." : "동일한 동료에게는 하루에 한 번만 칭찬할 수 있으며, 본인에게는 칭찬을 작성할 수 없습니다.",
+        type, status: "draft", createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
       });
-      await logAdmin("새 이벤트 생성", "", settings.eventName);
-    } else if (action === "runDraw") {
-      const prizes = await adminDb.collection("prizes").where("active", "==", true).get();
-      const candidates = await ticketCandidates();
-      const winnerIds = new Set<string>();
-      const batch = adminDb.batch();
-      for (const prizeDoc of prizes.docs.sort((a, b) => Number(a.data().order) - Number(b.data().order))) {
-        const prize = prizeDoc.data();
-        for (let i = 0; i < Number(prize.quantity || 0); i++) {
-          const pool = candidates.filter((candidate) => !winnerIds.has(candidate.employeeId));
-          if (!pool.length) break;
-          const winner = weightedPick(pool);
-          winnerIds.add(winner.employeeId);
-          batch.set(adminDb.collection("drawResults").doc(), {
-            prizeId: prizeDoc.id,
-            prizeName: prize.name,
-            winnerId: winner.employeeId,
-            winnerName: winner.name,
-            tickets: winner.tickets,
-            drawnAt: FieldValue.serverTimestamp(),
-          });
-        }
-      }
-      await batch.commit();
-      await logAdmin("추첨 실행", "", `${winnerIds.size}명`);
-    } else if (action === "resetResults") {
-      const results = await adminDb.collection("drawResults").get();
-      const batch = adminDb.batch();
-      results.docs.forEach((doc) => batch.delete(doc.ref));
-      await batch.commit();
-      await logAdmin("추첨 결과 초기화");
-    } else {
-      throw new Error("지원하지 않는 작업입니다.");
-    }
+      await logAdmin("이벤트 생성", selectedEventId, type);
+    } else if (action === "copyEvent") {
+      const sourceId = String(body.eventId || ""); const source = await getEvent(sourceId); const ref = adminDb.collection("events").doc(); selectedEventId = ref.id;
+      const { id: _id, status: _status, startDate: _start, endDate: _end, showResults: _show, ...copyable } = source;
+      await ref.set({ ...copyable, eventName: `${source.eventName} 복사본`, startDate: "", endDate: "", showResults: false, status: "draft", copiedFrom: sourceId, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
+      const [sourcePrizes, sourceQuizzes] = await Promise.all([eventDocs(sourceId, "prizes"), source.type === "quiz" ? eventDocs(sourceId, "quizzes") : Promise.resolve([])]);
+      const batch = adminDb.batch(); sourcePrizes.forEach((doc) => batch.set(eventCollection(selectedEventId, "prizes").doc(), { ...doc.data(), copiedAt: FieldValue.serverTimestamp() })); sourceQuizzes.forEach((doc) => batch.set(eventCollection(selectedEventId, "quizzes").doc(doc.id), { ...doc.data(), copiedAt: FieldValue.serverTimestamp() })); await batch.commit();
+      await logAdmin("이벤트 복사", selectedEventId, sourceId);
+    } else if (action === "activateEvent") {
+      const eventId = String(body.eventId || ""); const next = await getEvent(eventId); if (!next.startDate || !next.endDate) throw new Error("활성화하기 전에 시작일과 종료일을 설정해 주세요.");
+      const active = await getActiveEvent(); const batch = adminDb.batch();
+      if (active.id !== eventId) batch.set(adminDb.collection("events").doc(active.id), { status: "closed", updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      batch.set(adminDb.collection("events").doc(eventId), { status: "active", updatedAt: FieldValue.serverTimestamp() }, { merge: true }); batch.set(adminDb.doc("config/activeEvent"), { eventId, updatedAt: FieldValue.serverTimestamp() }); await batch.commit(); selectedEventId = eventId;
+      await logAdmin("이벤트 활성화", eventId, next.eventName);
+    } else if (action === "saveSettings") {
+      const eventId = String(body.eventId || ""); const current = await getEvent(eventId); const settings = body.settings || {};
+      await adminDb.collection("events").doc(eventId).set({ eventName: String(settings.eventName || current.eventName), intro: String(settings.intro || ""), startDate: String(settings.startDate || ""), endDate: String(settings.endDate || ""), showResults: Boolean(settings.showResults), minChars: Math.max(10, Number(settings.minChars || 20)), detailSchedule: String(settings.detailSchedule || ""), detailAttendance: String(settings.detailAttendance || ""), detailPrizes: String(settings.detailPrizes || ""), detailNotes: String(settings.detailNotes || ""), type: current.type, status: current.status, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      await logAdmin("이벤트 설정 저장", eventId);
+    } else if (action === "savePrizes") {
+      const eventId = String(body.eventId || ""); const rows = (body.prizes || []).map((prize: any, index: number) => ({ name: String(prize.name || "").trim(), amount: Math.max(0, Number(prize.amount || 0)), quantity: Math.max(1, Number(prize.quantity || 1)), active: true, order: index + 1 }));
+      await replaceSubcollection(eventId, "prizes", rows, (_row, index) => `prize-${index + 1}`); await logAdmin("상품 저장", eventId, `${rows.length}개`);
+    } else if (action === "saveQuizzes") {
+      const eventId = String(body.eventId || "");
+      const rows = (body.quizzes || []).map((quiz: any) => { const options = (quiz.options || []).map((option: unknown) => String(option).trim()).filter(Boolean); if (!/^\d{4}-\d{2}-\d{2}$/.test(String(quiz.date || "")) || !String(quiz.question || "").trim() || options.length < 2) throw new Error("퀴즈 날짜, 문제와 선택지를 확인해 주세요."); return { date: String(quiz.date), question: String(quiz.question).trim(), options, correctIndex: Math.min(options.length - 1, Math.max(0, Number(quiz.correctIndex || 0))), subject: String(quiz.subject || ""), explanation: String(quiz.explanation || ""), updatedAt: FieldValue.serverTimestamp() }; });
+      await replaceSubcollection(eventId, "quizzes", rows, (row) => row.date); await logAdmin("퀴즈 저장", eventId, `${rows.length}문제`);
+    } else if (action === "deletePraise") {
+      const eventId = String(body.eventId || ""); const source = eventId === LEGACY_EVENT_ID ? adminDb.collection("praises") : eventCollection(eventId, "praises"); await source.doc(String(body.praiseId || "")).delete(); await logAdmin("칭찬 게시글 삭제", String(body.praiseId || ""), eventId);
+    } else if (action === "publishResults") {
+      const eventId = String(body.eventId || ""); const current = await adminData(eventId) as any;
+      const slots = current.prizes.flatMap((prize: any) => Array.from({ length: Math.max(1, Number(prize.quantity || 1)) }, () => prize));
+      const results = slots.map((prize: any, index: number) => ({ rank: index + 1, prizeName: prize.name, amount: prize.amount, employeeId: current.standings[index]?.employeeId || "", winnerName: current.standings[index]?.name || "", tickets: current.standings[index]?.tickets || 0 }));
+      await Promise.all([eventCollection(eventId, "meta").doc("currentResult").set({ results, publishedAt: FieldValue.serverTimestamp() }), adminDb.collection("events").doc(eventId).set({ showResults: true, updatedAt: FieldValue.serverTimestamp() }, { merge: true })]); await logAdmin("이벤트 결과 공개", eventId, `${results.length}개 순위`);
+    } else if (action === "toggleResultsVisibility") {
+      const eventId = String(body.eventId || ""); await adminDb.collection("events").doc(eventId).set({ showResults: Boolean(body.visible), updatedAt: FieldValue.serverTimestamp() }, { merge: true }); await logAdmin(body.visible ? "이벤트 결과 다시 공개" : "이벤트 결과 숨김", eventId);
+    } else throw new Error("지원하지 않는 작업입니다.");
 
-    return NextResponse.json({ ...(await adminData()), publicData: await getCachedPublicData() });
-  } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "관리자 작업에 실패했습니다." },
-      { status: 400 },
-    );
-  }
+    updateTag("public-event-data");
+    return NextResponse.json({ ...(await adminData(selectedEventId || undefined)), publicData: await getCachedPublicData() });
+  } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "관리자 작업에 실패했습니다." }, { status: 400 }); }
 }

@@ -1,20 +1,11 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { unstable_cache } from "next/cache";
 import { getAdminDb } from "@/lib/firebase-admin";
+import { getActiveEvent, eventCollection, eventDocs, LEGACY_EVENT_ID, todayQuiz } from "@/lib/events";
+import { defaultSettings } from "@/lib/settings";
 import { ACTIVE, serialize, todaySeoul } from "@/lib/utils";
 
-export const defaultSettings = {
-  eventName: "칭찬 스티커 이벤트",
-  intro: "동료에게 따뜻한 칭찬과 고마움을 전하고 행운의 주인공이 되어 보세요.",
-  startDate: "",
-  endDate: "",
-  showResults: false,
-  minChars: 20,
-  detailSchedule: "이벤트 기간 동안 매일 참여할 수 있으며, 추첨 결과는 이벤트 종료 후 안내합니다.",
-  detailAttendance: "이벤트 기간 중 하루 1회 로그인하면 출석 스티커 1장이 지급됩니다.\n칭찬을 작성하거나 받으면 각각 스티커 1장이 추가됩니다.",
-  detailPrizes: "보유한 스티커 수를 기준으로 가중치 추첨을 진행합니다.\n등록된 상품과 수량은 이벤트 운영 상황에 따라 변경될 수 있습니다.",
-  detailNotes: "동일한 동료에게는 한 번만 칭찬할 수 있으며, 본인에게는 칭찬을 작성할 수 없습니다.",
-};
+export { defaultSettings } from "@/lib/settings";
 
 export async function getSettings() {
   const adminDb = getAdminDb();
@@ -28,17 +19,32 @@ export async function getSettings() {
 
 export async function getPublicData() {
   const adminDb = getAdminDb();
-  const [settings, employeesSnap, praisesSnap, prizesSnap, currentResultSnap, attendanceSnap] = await Promise.all([
-    getSettings(),
-    adminDb.collection("employees").where("status", "==", ACTIVE).get(),
-    adminDb.collection("praises").where("status", "==", "게시").get(),
-    adminDb.collection("prizes").where("active", "==", true).get(),
-    adminDb.doc("config/currentResult").get(),
-    adminDb.collection("attendance").where("date", "==", todaySeoul()).get(),
+  const settings = await getActiveEvent();
+  const praiseQuery = settings.id === LEGACY_EVENT_ID
+    ? adminDb.collection("praises").orderBy("createdAt", "desc").limit(20)
+    : eventCollection(settings.id, "praises").orderBy("createdAt", "desc").limit(20);
+  const attendanceQuery = settings.id === LEGACY_EVENT_ID
+    ? adminDb.collection("attendance").where("date", "==", todaySeoul())
+    : eventCollection(settings.id, "attendance").where("date", "==", todaySeoul());
+  const praiseCountQuery = settings.id === LEGACY_EVENT_ID
+    ? adminDb.collection("praises").count()
+    : eventCollection(settings.id, "praises").count();
+  const [employeesSnap, praisesSnap, praiseCountSnap, prizeDocs, eventResultSnap, legacyResultSnap, attendanceSnap, quiz] = await Promise.all([
+    settings.type === "praise" ? adminDb.collection("employees").where("status", "==", ACTIVE).get() : Promise.resolve(null),
+    settings.type === "praise" ? praiseQuery.get() : Promise.resolve(null),
+    settings.type === "praise" ? praiseCountQuery.get() : Promise.resolve(null),
+    eventDocs(settings.id, "prizes"),
+    eventCollection(settings.id, "meta").doc("currentResult").get(),
+    settings.id === LEGACY_EVENT_ID ? adminDb.doc("config/currentResult").get() : Promise.resolve(null),
+    attendanceQuery.get(),
+    settings.type === "quiz" ? todayQuiz(settings.id) : Promise.resolve(null),
   ]);
+  const currentResultSnap = eventResultSnap.exists ? eventResultSnap : legacyResultSnap;
 
-  const employees = employeesSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-  const praises = praisesSnap.docs
+  const employees = employeesSnap?.docs.map((doc) => ({ id: doc.id, ...doc.data() })) || [];
+  const praiseDocs = praisesSnap?.docs || [];
+  const praises = praiseDocs
+    .filter((doc) => doc.data().status === "게시")
     .map((doc) => {
       const row = doc.data();
       return {
@@ -48,21 +54,25 @@ export async function getPublicData() {
         createdAt: row.createdAt,
       };
     })
-    .sort((a: any, b: any) => b.createdAt?.toMillis?.() - a.createdAt?.toMillis?.());
-  const prizes = prizesSnap.docs
+    .sort((a: any, b: any) => b.createdAt?.toMillis?.() - a.createdAt?.toMillis?.())
+    .slice(0, 20);
+  const prizes = prizeDocs
+    .filter((doc) => doc.data().active !== false)
     .map((doc) => ({ id: doc.id, ...doc.data() }))
     .sort((a: any, b: any) => Number(a.order || 999) - Number(b.order || 999));
-  const results = settings.showResults && currentResultSnap.exists
+  const results = settings.showResults && currentResultSnap?.exists
     ? (currentResultSnap.data()?.results || [])
     : [];
 
   return serialize({
     settings,
+    event: { id: settings.id, type: settings.type, status: settings.status },
+    quiz,
     employees,
     praises,
     prizes,
     results,
-    stats: { employeeCount: employees.length, praiseCount: praises.length, todayAttendance: attendanceSnap.size },
+    stats: { employeeCount: employees.length, praiseCount: praiseCountSnap?.data().count || 0, todayAttendance: attendanceSnap.size },
   });
 }
 

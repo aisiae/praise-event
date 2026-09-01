@@ -1,7 +1,8 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { NextRequest, NextResponse } from "next/server";
+import { updateTag } from "next/cache";
 import { getAdminDb } from "@/lib/firebase-admin";
-import { getSettings } from "@/lib/data";
+import { eventCollection, getActiveEvent, LEGACY_EVENT_ID } from "@/lib/events";
 import { ACTIVE, isEventOpen, normalizeEmployeeId, normalizeEmployeeName, serialize, todaySeoul } from "@/lib/utils";
 
 export async function POST(request: NextRequest) {
@@ -21,29 +22,40 @@ export async function POST(request: NextRequest) {
       throw new Error("이름과 사번이 일치하지 않거나 재직 대상자가 아닙니다.");
     }
 
-    const settings = await getSettings();
+    const settings = await getActiveEvent();
     const eventOpen = isEventOpen(settings);
     const date = todaySeoul();
-    const attendanceRef = adminDb.collection("attendance").doc(`${date}_${employeeId}`);
+    const attendanceRef = settings.id === LEGACY_EVENT_ID
+      ? adminDb.collection("attendance").doc(`${date}_${employeeId}`)
+      : eventCollection(settings.id, "attendance").doc(`${date}_${employeeId}`);
     let attendanceAwarded = false;
 
-    if (eventOpen) {
+    if (eventOpen && settings.type === "praise") {
       await adminDb.runTransaction(async (tx) => {
         const attendance = await tx.get(attendanceRef);
         if (!attendance.exists) {
-          tx.set(attendanceRef, { date, employeeId, name: employee.name, checkedAt: FieldValue.serverTimestamp() });
+          tx.set(attendanceRef, { eventId: settings.id, date, employeeId, name: employee.name, checkedAt: FieldValue.serverTimestamp() });
           attendanceAwarded = true;
         }
       });
+      if (attendanceAwarded) updateTag("public-event-data");
     }
 
     let stickerStatus = { attendance: attendanceAwarded ? 1 : 0, sent: 0, received: 0, total: attendanceAwarded ? 1 : 0 };
     let personalPraises: { received: unknown[]; sent: unknown[] } = { received: [], sent: [] };
+    let quizSubmission: unknown = null;
     try {
+      if (settings.type === "quiz") {
+        const response = await eventCollection(settings.id, "responses").doc(`${date}_${employeeId}`).get();
+        quizSubmission = response.exists ? serialize({ id: response.id, ...response.data() }) : null;
+      }
+      const attendanceSource = settings.id === LEGACY_EVENT_ID ? adminDb.collection("attendance") : eventCollection(settings.id, "attendance");
+      const praiseSource = settings.id === LEGACY_EVENT_ID ? adminDb.collection("praises") : eventCollection(settings.id, "praises");
+      if (settings.type !== "praise") throw new Error("quiz-only");
       const [attendanceSnap, sentSnap, receivedSnap] = await Promise.all([
-        adminDb.collection("attendance").where("employeeId", "==", employeeId).get(),
-        adminDb.collection("praises").where("writerId", "==", employeeId).get(),
-        adminDb.collection("praises").where("targetId", "==", employeeId).get(),
+        attendanceSource.where("employeeId", "==", employeeId).get(),
+        praiseSource.where("writerId", "==", employeeId).get(),
+        praiseSource.where("targetId", "==", employeeId).get(),
       ]);
       const sent = sentSnap.docs.filter((doc) => doc.data().status === "게시").length;
       const received = receivedSnap.docs.filter((doc) => doc.data().status === "게시").length;
@@ -61,19 +73,23 @@ export async function POST(request: NextRequest) {
         }),
       };
     } catch (statusError) {
-      console.error("스티커 현황 조회 실패", statusError);
+      if (settings.type === "praise") console.error("스티커 현황 조회 실패", statusError);
     }
 
     return NextResponse.json({
       employee: { employeeId, name: employee.name },
       attendanceAwarded,
       attendanceMessage: !eventOpen
-        ? "이벤트 기간이 아니어서 출석 스티커는 지급되지 않았습니다."
+        ? "현재 이벤트 참여 기간이 아닙니다."
+        : settings.type === "quiz"
+          ? quizSubmission ? "오늘의 퀴즈에 이미 참여했습니다." : "인증되었습니다. 오늘의 퀴즈에 참여해 주세요!"
         : attendanceAwarded
           ? "오늘의 출석 스티커 1장을 받았습니다!"
           : "오늘 출석 스티커는 이미 받았습니다.",
       stickerStatus,
       personalPraises: serialize(personalPraises),
+      eventType: settings.type,
+      quizSubmission,
     });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "로그인하지 못했습니다." }, { status: 400 });
