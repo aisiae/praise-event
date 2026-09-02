@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
       correct: answer === Number(quiz.correctIndex),
       correctIndex: Number(quiz.correctIndex),
       explanation: String(quiz.explanation || ""),
-      message: "오늘의 퀴즈 출석이 완료되었습니다!",
+      message: answer === Number(quiz.correctIndex) ? "정답입니다!" : "내일 새로운 문제에 다시 도전해 주세요!",
     });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "퀴즈를 제출하지 못했습니다." }, { status: 400 });

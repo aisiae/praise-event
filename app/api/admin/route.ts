@@ -125,8 +125,8 @@ export async function POST(request: NextRequest) {
       await ref.set({
         ...defaultSettings,
         eventName: type === "quiz" ? "새 오늘의 퀴즈" : "새 칭찬 우체국",
-        intro: type === "quiz" ? "매일 한 문제, 동료를 알아가는 즐거운 출석 퀴즈입니다." : defaultSettings.intro,
-        detailAttendance: type === "quiz" ? "이름과 사번으로 인증한 뒤 오늘의 퀴즈를 제출하면 출석과 추첨권 1장이 인정됩니다. 정답 여부는 추첨권 수에 영향을 주지 않습니다." : "이벤트 기간 중 하루 1회 로그인하면 출석 스티커 1장이 지급됩니다.\n칭찬을 작성하거나 받으면 각각 스티커 1장이 추가됩니다.",
+        intro: type === "quiz" ? "하루 한 문제, 동료를 알아가는 산뜻한 퀴즈 이벤트입니다." : defaultSettings.intro,
+        detailAttendance: type === "quiz" ? "하루 한 문제씩 출제됩니다. 이름과 사번으로 인증한 뒤 오늘의 퀴즈에 참여해 주세요. 내일도 새로운 문제를 맞혀 주세요!" : "이벤트 기간 중 하루 1회 로그인하면 출석 스티커 1장이 지급됩니다.\n칭찬을 작성하거나 받으면 각각 스티커 1장이 추가됩니다.",
         detailNotes: type === "quiz" ? "한 직원은 하루에 한 번만 답을 제출할 수 있습니다." : "동일한 동료에게는 하루에 한 번만 칭찬할 수 있으며, 본인에게는 칭찬을 작성할 수 없습니다.",
         type, status: "draft", createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
       });

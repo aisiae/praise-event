@@ -167,7 +167,7 @@ export default function EventApp() {
   }, []);
 
   useEffect(() => {
-    if (!loginOpen && !stickerOpen && !loginResultOpen && !eventDetailOpen && !resultOpen && !selectedPraise) return;
+    if (!loginOpen && !stickerOpen && !loginResultOpen && !eventDetailOpen && !resultOpen && !selectedPraise && !quizResult) return;
     const close = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setLoginOpen(false);
@@ -176,11 +176,12 @@ export default function EventApp() {
         setEventDetailOpen(false);
         setResultOpen(false);
         setSelectedPraise(null);
+        setQuizResult(null);
       }
     };
     window.addEventListener("keydown", close);
     return () => window.removeEventListener("keydown", close);
-  }, [loginOpen, stickerOpen, loginResultOpen, eventDetailOpen, resultOpen, selectedPraise]);
+  }, [loginOpen, stickerOpen, loginResultOpen, eventDetailOpen, resultOpen, selectedPraise, quizResult]);
 
   const filteredPraises = useMemo(() => {
     if (!user || praiseTab === "all") return data.praises;
@@ -393,7 +394,7 @@ export default function EventApp() {
   };
 
   return (
-    <main>
+    <main className={data.event.type === "quiz" && !adminOpen ? "quiz-theme" : ""}>
       <header className="topbar">
         <button className="brand" onClick={() => setAdminOpen(false)} aria-label="메인 화면으로">
           <Image className="brand-logo" src="/hwamulman-logo.png" alt="화물맨" width={44} height={34} priority />
@@ -418,7 +419,7 @@ export default function EventApp() {
       {!adminOpen && (
         <section className="hero">
           <div className="hero-copy">
-            <span className="eyebrow">{data.event.type === "quiz" ? "DAILY QUIZ & ATTENDANCE" : "PRAISE & ATTENDANCE"}</span>
+            <span className="eyebrow">{data.event.type === "quiz" ? "ONE QUIZ A DAY" : "PRAISE & ATTENDANCE"}</span>
             <h1>{data.settings.eventName}</h1>
             <p>{data.settings.intro}</p>
             <div className="hero-info-actions"><EventPeriod settings={data.settings} /><button className="detail-button" onClick={() => setEventDetailOpen(true)}>상세보기 <span>→</span></button><button className="detail-button result-view-button" onClick={() => setResultOpen(true)}>결과 보기 <span>→</span></button></div>
@@ -647,7 +648,7 @@ export default function EventApp() {
           )}
           </> : <>
             <section className="entry-strip quiz-entry-strip">
-              <div className="entry-message"><span className="entry-icon">Q</span><div><strong>{user ? `${user.name}님, 오늘의 문제가 도착했어요!` : "직원 인증 후 오늘의 퀴즈에 참여해 보세요"}</strong><span>정답 여부와 관계없이 제출하면 오늘의 출석으로 인정됩니다.</span></div></div>
+              <div className="entry-message"><span className="entry-icon">Q</span><div><strong>{user ? `${user.name}님, 오늘의 문제가 도착했어요!` : "직원 인증 후 오늘의 퀴즈에 참여해 보세요"}</strong><span>하루 한 문제씩 출제됩니다. 내일도 문제를 맞혀 주세요!</span></div></div>
               {!user && <button className="button entry-button" onClick={() => setLoginOpen(true)}>직원 인증하고 참여하기 <span>→</span></button>}
             </section>
             <section className="quiz-stage">
@@ -658,19 +659,31 @@ export default function EventApp() {
                     <div className="quiz-day"><span>오늘의 주인공</span><strong>{data.quiz.subject || "우리 동료"}</strong></div>
                     <h2>{data.quiz.question}</h2>
                     <div className="quiz-options">{data.quiz.options.map((option, index) => <label className={quizAnswer === index ? "selected" : ""} key={index}><input type="radio" name="quiz-answer" checked={quizAnswer === index} onChange={() => setQuizAnswer(index)} disabled={Boolean(quizSubmission)} /><span>{index + 1}</span><strong>{option}</strong></label>)}</div>
-                    {quizSubmission ? <div className="quiz-complete"><strong>✓ 오늘의 출석 완료</strong><p>{quizResult?.explanation || "오늘의 퀴즈에 참여해 주셔서 감사합니다."}</p></div> : <button className="button primary full" disabled={busy || quizAnswer === null}>{busy ? "제출하고 있어요…" : "정답 제출하고 출석하기"}</button>}
+                    {quizSubmission ? <div className={`quiz-complete ${quizSubmission.correct ? "correct" : "incorrect"}`}><strong>{quizSubmission.correct ? "✓ 정답을 맞혔어요!" : "오늘의 퀴즈 참여 완료"}</strong><p>{quizResult?.explanation || "하루 한 문제씩 출제됩니다. 내일도 문제를 맞혀 주세요!"}</p></div> : <button className="button primary full" disabled={busy || quizAnswer === null}>{busy ? "제출하고 있어요…" : "정답 제출하기"}</button>}
                   </form>}
             </section>
           </>}
         </>
       )}
 
-      {(loginOpen || stickerOpen || loginResultOpen || eventDetailOpen || resultOpen || selectedPraise) && (
+      {(loginOpen || stickerOpen || loginResultOpen || eventDetailOpen || resultOpen || selectedPraise || quizResult) && (
         <div className="modal-backdrop" onMouseDown={(event) => {
           if (event.currentTarget === event.target) {
-            setLoginOpen(false); setStickerOpen(false); setLoginResultOpen(false); setEventDetailOpen(false); setResultOpen(false); setSelectedPraise(null);
+            setLoginOpen(false); setStickerOpen(false); setLoginResultOpen(false); setEventDetailOpen(false); setResultOpen(false); setSelectedPraise(null); setQuizResult(null);
           }
         }}>
+          {quizResult && (
+            <section className={`modal quiz-result-modal ${quizResult.correct ? "is-correct" : "is-incorrect"}`} role="dialog" aria-modal="true" aria-labelledby="quiz-result-title">
+              <button type="button" className="modal-close" onClick={() => setQuizResult(null)} aria-label="닫기">×</button>
+              {quizResult.correct && <div className="confetti" aria-hidden="true">{Array.from({ length: 24 }, (_, index) => <i key={index} />)}</div>}
+              <div className="quiz-result-symbol" aria-hidden="true">{quizResult.correct ? "✓" : "!"}</div>
+              <span className="section-label">QUIZ RESULT</span>
+              <h2 id="quiz-result-title">{quizResult.correct ? "정답이에요!" : "아쉽지만 오답이에요"}</h2>
+              <p>{quizResult.correct ? "멋지게 맞혔어요! 내일의 문제도 기대해 주세요." : "괜찮아요. 내일 새로운 문제에 다시 도전해 주세요!"}</p>
+              {quizResult.explanation && <div className="quiz-result-explanation"><strong>정답 해설</strong><span>{quizResult.explanation}</span></div>}
+              <button type="button" className="button primary full" onClick={() => setQuizResult(null)}>확인</button>
+            </section>
+          )}
           {loginOpen && (
             <form className="modal" onSubmit={employeeLogin}>
               <button type="button" className="modal-close" onClick={() => setLoginOpen(false)} aria-label="닫기">×</button>
