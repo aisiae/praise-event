@@ -57,7 +57,7 @@ type AdminData = {
   standings: Array<{ employeeId: string; name: string; attendance: number; sent: number; received: number; tickets: number }>;
   praises: Praise[];
   quizzes: Quiz[];
-  responses: Array<{ id: string; date: string; employeeId: string; name: string; correct: boolean }>;
+  responses: Array<{ id: string; date: string; employeeId: string; name: string; answer: number; correct: boolean }>;
   hasPublishedResult: boolean;
   resultPublished: boolean;
 };
@@ -491,7 +491,7 @@ export default function EventApp() {
               {adminTab === "employees" && <div className="admin-grid roster-grid">
                 <section className="panel">
                   <h3>직원 명단 일괄 등록</h3>
-                  <p className="muted">이름 · 사번 · 상태 순서로 붙여 넣어 주세요.</p>
+                  <p className="muted">이름 · 사번 · 상태 순서로 붙여 넣어 주세요. 탭, 쉼표, 공백을 모두 지원하며 기존 명단은 유지됩니다.</p>
                   <textarea rows={8} value={employeeText} onChange={(e) => setEmployeeText(e.target.value)} placeholder={"홍길동\t202509004\t재직"} />
                   <button className="button primary" disabled={busy} onClick={() => runAdmin({ action: "importEmployees", text: employeeText }, "직원 명단을 등록했습니다.")}>명단 등록</button>
                 </section>
@@ -559,6 +559,11 @@ export default function EventApp() {
               {adminTab === "status" && <section className="panel admin-section">
                 <div className="section-head compact"><div><h3>{admin.settings.type === "quiz" ? "직원별 퀴즈 참여 현황" : "직원별 스티커 현황"}</h3><p className="muted">{admin.settings.type === "quiz" ? "제출한 날짜 수와 정답 수를 확인합니다." : "출석과 칭찬 활동을 합산한 현재 스코어입니다."}</p></div><button className="button secondary" onClick={() => adminRequest()}>새로고침</button></div>
                 <div className="table-wrap"><table><thead><tr><th>순위</th><th>직원</th><th>{admin.settings.type === "quiz" ? "참여 일수" : "출석"}</th><th>{admin.settings.type === "quiz" ? "정답 수" : "보낸 칭찬"}</th>{admin.settings.type === "praise" && <th>받은 칭찬</th>}<th>{admin.settings.type === "quiz" ? "추첨권" : "총 스티커"}</th></tr></thead><tbody>{admin.standings.map((row, index) => <tr key={row.employeeId}><td>{index + 1}</td><td><strong>{row.name}</strong><small>{row.employeeId}</small></td><td>{row.attendance}</td><td>{admin.settings.type === "quiz" ? row.received : row.sent}</td>{admin.settings.type === "praise" && <td>{row.received}</td>}<td><strong className="score">{row.tickets}</strong></td></tr>)}</tbody></table></div>
+                {admin.settings.type === "quiz" && <div className="quiz-response-admin">
+                  <div className="section-head compact"><div><h3>퀴즈 제출 기록 관리</h3><p className="muted">답안을 수정하거나 테스트 기록을 삭제하면 해당 직원이 같은 날짜의 문제에 다시 참여할 수 있습니다.</p></div><span className="count">{admin.responses.length}</span></div>
+                  <div className="table-wrap"><table><thead><tr><th>날짜</th><th>직원</th><th>제출 답안</th><th>결과</th><th>관리</th></tr></thead><tbody>{admin.responses.map((response, responseIndex) => { const quiz = admin.quizzes.find((item) => item.date === response.date); return <tr key={response.id}><td>{formatDate(response.date)}</td><td><strong>{response.name}</strong><small>{response.employeeId}</small></td><td><select aria-label={`${response.name} 제출 답안`} value={response.answer} onChange={(event) => { const responses = [...admin.responses]; responses[responseIndex] = { ...response, answer: Number(event.target.value) }; setAdmin({ ...admin, responses }); }}>{quiz?.options.map((option, index) => <option key={index} value={index}>{index + 1}번 · {option}</option>) || <option value={response.answer}>{response.answer + 1}번</option>}</select></td><td><span className={`answer-status ${response.correct ? "correct" : "incorrect"}`}>{response.correct ? "정답" : "오답"}</span></td><td><div className="employee-actions"><button className="table-action save" disabled={busy || !quiz} onClick={() => runAdmin({ action: "updateQuizResponse", responseId: response.id, answer: response.answer }, "제출 답안을 수정했습니다.")}>수정</button><button className="table-action delete" disabled={busy} onClick={async () => { if (!confirm(`${response.name}님의 ${formatDate(response.date)} 제출 기록을 삭제할까요? 삭제 후 다시 참여할 수 있습니다.`)) return; await runAdmin({ action: "deleteQuizResponse", responseId: response.id }, "퀴즈 제출 기록을 삭제했습니다."); if (user?.employeeId === response.employeeId) { setQuizSubmission(null); setQuizResult(null); setQuizAnswer(null); } }}>삭제</button></div></td></tr>; })}</tbody></table></div>
+                  {!admin.responses.length && <div className="empty-state compact-empty"><strong>제출된 퀴즈 기록이 없습니다.</strong><p>직원이 퀴즈에 참여하면 이곳에서 관리할 수 있습니다.</p></div>}
+                </div>}
               </section>}
 
               {adminTab === "results" && <section className="admin-result-grid admin-section">

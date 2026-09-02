@@ -11,7 +11,12 @@ import { ACTIVE, normalizeEmployeeId, normalizeEmployeeName, serialize } from "@
 function parseEmployees(text: string) {
   const seen = new Set<string>();
   return text.trim().split(/\r?\n/)
-    .map((line) => (line.includes("\t") ? line.split("\t") : line.split(",")))
+    .map((line) => {
+      const value = line.trim();
+      if (value.includes("\t")) return value.split(/\t+/);
+      if (value.includes(",")) return value.split(/\s*,\s*/);
+      return value.split(/\s+/);
+    })
     .map((cols) => ({ name: normalizeEmployeeName(cols[0]), employeeId: normalizeEmployeeId(cols[1]), status: ["재직", "휴직", "퇴직"].includes(String(cols[2] || "").trim()) ? String(cols[2]).trim() : ACTIVE }))
     .filter((row) => {
       if (!row.employeeId || !row.name || /사번/.test(row.employeeId)) return false;
@@ -106,9 +111,10 @@ export async function POST(request: NextRequest) {
       const rows = parseEmployees(String(body.text || ""));
       if (!rows.length) throw new Error("등록할 직원 명단이 없습니다.");
       const old = await adminDb.collection("employees").get();
-      if (old.size + rows.length > 450) throw new Error("직원 수가 일괄 등록 한도를 초과했습니다.");
-      const batch = adminDb.batch(); old.docs.forEach((doc) => batch.delete(doc.ref));
-      rows.forEach((row) => batch.set(adminDb.collection("employees").doc(row.employeeId), { name: row.name, status: row.status, updatedAt: FieldValue.serverTimestamp() }));
+      const employeeIds = new Set(old.docs.map((doc) => doc.id)); rows.forEach((row) => employeeIds.add(row.employeeId));
+      if (employeeIds.size > 450) throw new Error("직원 수가 일괄 등록 한도를 초과했습니다.");
+      const batch = adminDb.batch();
+      rows.forEach((row) => batch.set(adminDb.collection("employees").doc(row.employeeId), { name: row.name, status: row.status, updatedAt: FieldValue.serverTimestamp() }, { merge: true }));
       await batch.commit(); await logAdmin("직원 명단 일괄 등록", "", `${rows.length}명`);
       refreshPublic = true;
     } else if (action === "updateEmployee") {
@@ -182,6 +188,21 @@ export async function POST(request: NextRequest) {
       const eventId = String(body.eventId || "");
       const rows = (body.quizzes || []).map((quiz: any) => { const options = (quiz.options || []).map((option: unknown) => String(option).trim()).filter(Boolean); if (!/^\d{4}-\d{2}-\d{2}$/.test(String(quiz.date || "")) || !String(quiz.question || "").trim() || options.length < 2) throw new Error("퀴즈 날짜, 문제와 선택지를 확인해 주세요."); return { date: String(quiz.date), question: String(quiz.question).trim(), options, correctIndex: Math.min(options.length - 1, Math.max(0, Number(quiz.correctIndex || 0))), subject: String(quiz.subject || ""), explanation: String(quiz.explanation || ""), updatedAt: FieldValue.serverTimestamp() }; });
       await replaceSubcollection(eventId, "quizzes", rows, (row) => row.date); await logAdmin("퀴즈 저장", eventId, `${rows.length}문제`);
+      refreshPublic = eventId === (await getActiveEvent()).id;
+    } else if (action === "updateQuizResponse") {
+      const eventId = String(body.eventId || ""); const responseId = String(body.responseId || ""); const answer = Number(body.answer);
+      const responseRef = eventCollection(eventId, "responses").doc(responseId); const responseSnap = await responseRef.get();
+      if (!responseSnap.exists) throw new Error("수정할 퀴즈 제출 기록을 찾을 수 없습니다.");
+      const response = responseSnap.data() || {}; const quizSnap = await eventCollection(eventId, "quizzes").doc(String(response.date || "")).get(); const quiz = quizSnap.data();
+      if (!quizSnap.exists || !quiz) throw new Error("해당 날짜의 퀴즈를 찾을 수 없습니다.");
+      const options = Array.isArray(quiz.options) ? quiz.options : [];
+      if (!Number.isInteger(answer) || answer < 0 || answer >= options.length) throw new Error("수정할 답안을 확인해 주세요.");
+      await responseRef.update({ answer, correct: answer === Number(quiz.correctIndex), updatedAt: FieldValue.serverTimestamp() }); await logAdmin("퀴즈 제출 답안 수정", responseId, `${answer + 1}번`);
+      refreshPublic = eventId === (await getActiveEvent()).id;
+    } else if (action === "deleteQuizResponse") {
+      const eventId = String(body.eventId || ""); const responseId = String(body.responseId || "");
+      if (!responseId) throw new Error("삭제할 퀴즈 제출 기록을 확인해 주세요.");
+      await eventCollection(eventId, "responses").doc(responseId).delete(); await logAdmin("퀴즈 제출 기록 삭제", responseId, eventId);
       refreshPublic = eventId === (await getActiveEvent()).id;
     } else if (action === "deletePraise") {
       const eventId = String(body.eventId || ""); const source = eventId === LEGACY_EVENT_ID ? adminDb.collection("praises") : eventCollection(eventId, "praises"); await source.doc(String(body.praiseId || "")).delete(); await logAdmin("칭찬 게시글 삭제", String(body.praiseId || ""), eventId);
