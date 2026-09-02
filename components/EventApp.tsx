@@ -147,7 +147,7 @@ export default function EventApp() {
   const [admin, setAdmin] = useState<AdminData | null>(null);
   const [adminLogin, setAdminLogin] = useState({ email: "", password: "" });
   const [rememberAdminEmail, setRememberAdminEmail] = useState(false);
-  const [employeeText, setEmployeeText] = useState("");
+  const [newEmployee, setNewEmployee] = useState({ name: "", employeeId: "", status: "재직" });
   const [busy, setBusy] = useState(false);
   const [quizAnswer, setQuizAnswer] = useState<number | null>(null);
   const [quizSubmission, setQuizSubmission] = useState<QuizSubmission | null>(null);
@@ -359,8 +359,10 @@ export default function EventApp() {
         : body;
       await adminRequest(payload);
       setNotice(message);
+      return true;
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "작업에 실패했습니다.");
+      return false;
     } finally {
       setBusy(false);
     }
@@ -489,15 +491,13 @@ export default function EventApp() {
               </nav>
 
               {adminTab === "employees" && <div className="admin-grid roster-grid">
-                <section className="panel">
-                  <h3>직원 명단 일괄 등록</h3>
-                  <p className="muted">이름 · 사번 · 상태 순서로 붙여 넣어 주세요. 탭, 쉼표, 공백을 모두 지원하며 기존 명단은 유지됩니다.</p>
-                  <textarea rows={8} value={employeeText} onChange={(e) => setEmployeeText(e.target.value)} placeholder={"홍길동\t202509004\t재직"} />
-                  <button className="button primary" disabled={busy} onClick={() => runAdmin({ action: "importEmployees", text: employeeText }, "직원 명단을 등록했습니다.")}>명단 등록</button>
-                </section>
                 <section className="panel roster-panel">
                   <h3>등록 직원 <span className="count">{admin.employees.length}</span></h3>
                   <div className="table-wrap"><table><thead><tr><th>이름</th><th>사번</th><th>상태</th><th>관리</th></tr></thead><tbody>{admin.employees.map((employee, index) => <tr key={employee.id}><td><input aria-label={`${employee.name} 이름`} value={employee.name} onChange={(e) => { const employees = [...admin.employees]; employees[index] = { ...employee, name: e.target.value }; setAdmin({ ...admin, employees }); }} /></td><td>{employee.id}</td><td><select value={employee.status} onChange={(e) => { const employees = [...admin.employees]; employees[index] = { ...employee, status: e.target.value }; setAdmin({ ...admin, employees }); }}><option>재직</option><option>휴직</option><option>퇴직</option></select></td><td><div className="employee-actions"><button className="table-action save" disabled={busy} onClick={() => runAdmin({ action: "updateEmployee", employeeId: employee.id, name: employee.name, status: employee.status }, "직원 정보를 수정했습니다.")}>저장</button><button className="table-action delete" disabled={busy} onClick={() => confirm(`${employee.name} 직원을 삭제할까요?`) && runAdmin({ action: "deleteEmployee", employeeId: employee.id }, "직원을 삭제했습니다.")}>삭제</button></div></td></tr>)}</tbody></table></div>
+                  <div className="employee-add-box">
+                    <div><h3>직원 추가하기</h3><p className="muted">직원 정보를 입력한 뒤 저장해 주세요.</p></div>
+                    <div className="employee-add-fields"><label>이름<input value={newEmployee.name} onChange={(e) => setNewEmployee({ ...newEmployee, name: e.target.value })} placeholder="이름" /></label><label>사번<input value={newEmployee.employeeId} onChange={(e) => setNewEmployee({ ...newEmployee, employeeId: e.target.value })} placeholder="사번" /></label><label>상태<select value={newEmployee.status} onChange={(e) => setNewEmployee({ ...newEmployee, status: e.target.value })}><option>재직</option><option>휴직</option><option>퇴직</option></select></label><button className="button primary" disabled={busy || !newEmployee.name.trim() || !newEmployee.employeeId.trim()} onClick={async () => { const saved = await runAdmin({ action: "addEmployee", ...newEmployee }, "직원을 추가했습니다."); if (saved) setNewEmployee({ name: "", employeeId: "", status: "재직" }); }}>직원 저장</button></div>
+                  </div>
                 </section>
               </div>}
 
@@ -681,7 +681,7 @@ export default function EventApp() {
             <section className={`modal quiz-result-modal ${quizResult.correct ? "is-correct" : "is-incorrect"}`} role="dialog" aria-modal="true" aria-labelledby="quiz-result-title">
               <button type="button" className="modal-close" onClick={() => setQuizResult(null)} aria-label="닫기">×</button>
               {quizResult.correct && <div className="confetti" aria-hidden="true">{Array.from({ length: 24 }, (_, index) => <i key={index} />)}</div>}
-              <div className="quiz-result-symbol" aria-hidden="true">{quizResult.correct ? "✓" : "!"}</div>
+              <div className="quiz-result-symbol" aria-hidden="true">{quizResult.correct ? "✓" : <span className="crying-face">😢</span>}</div>
               <span className="section-label">QUIZ RESULT</span>
               <h2 id="quiz-result-title">{quizResult.correct ? "정답이에요!" : "아쉽지만 오답이에요"}</h2>
               <p>{quizResult.correct ? "멋지게 맞혔어요! 내일의 문제도 기대해 주세요." : "괜찮아요. 내일 새로운 문제에 다시 도전해 주세요!"}</p>

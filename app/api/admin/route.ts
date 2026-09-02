@@ -6,25 +6,7 @@ import { getAdminDb } from "@/lib/firebase-admin";
 import { ensureLegacyEvent, eventCollection, eventDocs, getActiveEvent, getEvent, LEGACY_EVENT_ID, listEvents, type EventType } from "@/lib/events";
 import { defaultSettings } from "@/lib/settings";
 import { getCachedPublicData, logAdmin } from "@/lib/data";
-import { ACTIVE, normalizeEmployeeId, normalizeEmployeeName, serialize } from "@/lib/utils";
-
-function parseEmployees(text: string) {
-  const seen = new Set<string>();
-  return text.trim().split(/\r?\n/)
-    .map((line) => {
-      const value = line.trim();
-      if (value.includes("\t")) return value.split(/\t+/);
-      if (value.includes(",")) return value.split(/\s*,\s*/);
-      return value.split(/\s+/);
-    })
-    .map((cols) => ({ name: normalizeEmployeeName(cols[0]), employeeId: normalizeEmployeeId(cols[1]), status: ["재직", "휴직", "퇴직"].includes(String(cols[2] || "").trim()) ? String(cols[2]).trim() : ACTIVE }))
-    .filter((row) => {
-      if (!row.employeeId || !row.name || /사번/.test(row.employeeId)) return false;
-      if (seen.has(row.employeeId)) throw new Error(`사번 ${row.employeeId}이 중복되었습니다.`);
-      seen.add(row.employeeId);
-      return true;
-    });
-}
+import { normalizeEmployeeId, normalizeEmployeeName, serialize } from "@/lib/utils";
 
 function praiseStandings(employeeDocs: FirebaseFirestore.QueryDocumentSnapshot[], praiseDocs: FirebaseFirestore.QueryDocumentSnapshot[], attendanceDocs: FirebaseFirestore.QueryDocumentSnapshot[]) {
   const sent = new Map<string, number>();
@@ -107,15 +89,13 @@ export async function POST(request: NextRequest) {
     if (action === "loadEvent") {
       selectedEventId = String(body.eventId || "");
       return NextResponse.json(await adminData(selectedEventId));
-    } else if (action === "importEmployees") {
-      const rows = parseEmployees(String(body.text || ""));
-      if (!rows.length) throw new Error("등록할 직원 명단이 없습니다.");
-      const old = await adminDb.collection("employees").get();
-      const employeeIds = new Set(old.docs.map((doc) => doc.id)); rows.forEach((row) => employeeIds.add(row.employeeId));
-      if (employeeIds.size > 450) throw new Error("직원 수가 일괄 등록 한도를 초과했습니다.");
-      const batch = adminDb.batch();
-      rows.forEach((row) => batch.set(adminDb.collection("employees").doc(row.employeeId), { name: row.name, status: row.status, updatedAt: FieldValue.serverTimestamp() }, { merge: true }));
-      await batch.commit(); await logAdmin("직원 명단 일괄 등록", "", `${rows.length}명`);
+    } else if (action === "addEmployee") {
+      const employeeId = normalizeEmployeeId(body.employeeId); const name = normalizeEmployeeName(body.name); const status = String(body.status || "");
+      if (!employeeId || !name || !["재직", "휴직", "퇴직"].includes(status)) throw new Error("이름, 사번, 상태를 모두 확인해 주세요.");
+      const employeeRef = adminDb.collection("employees").doc(employeeId); const [existing, employees] = await Promise.all([employeeRef.get(), adminDb.collection("employees").count().get()]);
+      if (existing.exists) throw new Error("이미 등록된 사번입니다. 기존 직원 행에서 수정해 주세요.");
+      if (employees.data().count >= 450) throw new Error("등록 가능한 직원 수를 초과했습니다.");
+      await employeeRef.set({ name, status, updatedAt: FieldValue.serverTimestamp() }); await logAdmin("직원 추가", employeeId, `${name} / ${status}`);
       refreshPublic = true;
     } else if (action === "updateEmployee") {
       const employeeId = normalizeEmployeeId(body.employeeId); const name = normalizeEmployeeName(body.name); const status = String(body.status || "");
