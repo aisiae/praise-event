@@ -10,3 +10,11 @@ export const defaultSettings = {
   detailPrizes: "보유한 응모권 수를 기준으로 추첨을 진행합니다.",
   detailNotes: "한 직원은 하루에 한 번만 참여할 수 있습니다.",
 };
+
+export const quizPrizePreset = [
+  { name: "신세계상품권", amount: 50000, quantity: 1 },
+  { name: "신세계상품권", amount: 40000, quantity: 2 },
+  { name: "신세계상품권", amount: 30000, quantity: 3 },
+  { name: "신세계상품권", amount: 20000, quantity: 3 },
+  { name: "신세계상품권", amount: 10000, quantity: 2 },
+];

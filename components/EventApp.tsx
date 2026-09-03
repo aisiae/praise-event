@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { signInWithEmailAndPassword, signOut } from "firebase/auth";
 import Image from "next/image";
 import { getFirebaseAuth } from "@/lib/firebase-client";
+import { quizPrizePreset } from "@/lib/settings";
 
 type Employee = { id?: string; employeeId?: string; name: string; status?: string };
 type Prize = { id?: string; name: string; amount: number; quantity: number; active?: boolean };
@@ -511,7 +512,10 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
               {adminTab === "prizes" && <section className="panel admin-section">
                 <div className="section-head compact">
                   <div><h3>상품 관리</h3><p className="muted">위에서부터 1위, 2위 순으로 상품이 나열됩니다.</p></div>
-                  <button className="button secondary" onClick={() => setAdmin({ ...admin, prizes: [...admin.prizes, { name: "", amount: 0, quantity: 1 }] })}>상품 추가</button>
+                  <div className="actions">
+                    {admin.settings.type === "quiz" && <button className="button secondary" onClick={() => setAdmin({ ...admin, prizes: quizPrizePreset.map((prize) => ({ ...prize })) })}>품의서 경품 불러오기</button>}
+                    <button className="button secondary" onClick={() => setAdmin({ ...admin, prizes: [...admin.prizes, { name: "", amount: 0, quantity: 1 }] })}>상품 추가</button>
+                  </div>
                 </div>
                 <div className="prize-editor">
                   {admin.prizes.map((prize, index) => (

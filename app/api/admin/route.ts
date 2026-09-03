@@ -4,7 +4,7 @@ import { revalidateTag } from "next/cache";
 import { requireAdmin } from "@/lib/auth";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { ensureLegacyEvent, eventCollection, eventDocs, getActiveEvent, getEvent, LEGACY_EVENT_ID, listEvents, type EventType } from "@/lib/events";
-import { defaultSettings } from "@/lib/settings";
+import { defaultSettings, quizPrizePreset } from "@/lib/settings";
 import { getCachedPublicData, logAdmin } from "@/lib/data";
 import { normalizeEmployeeId, normalizeEmployeeName, serialize } from "@/lib/utils";
 
@@ -116,6 +116,9 @@ export async function POST(request: NextRequest) {
         detailNotes: type === "quiz" ? "한 직원은 하루에 한 번만 답을 제출할 수 있습니다." : "동일한 동료에게는 하루에 한 번만 칭찬할 수 있으며, 본인에게는 칭찬을 작성할 수 없습니다.",
         type, status: "draft", createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
       });
+      if (type === "quiz") {
+        await replaceSubcollection(selectedEventId, "prizes", quizPrizePreset, (_row, index) => `prize-${index + 1}`);
+      }
       await logAdmin("이벤트 생성", selectedEventId, type);
     } else if (action === "copyEvent") {
       const sourceId = String(body.eventId || ""); const source = await getEvent(sourceId); const ref = adminDb.collection("events").doc(); selectedEventId = ref.id;

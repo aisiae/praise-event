@@ -1,0 +1,261 @@
+<style>
+  .quiz-kms-wrap {
+    max-width: 880px;
+    font-family: "Noto Sans KR", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    line-height: 1.75;
+    text-align: left;
+  }
+  .quiz-kms-wrap * { box-sizing: border-box; }
+  .quiz-kms-hero {
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 28px;
+    padding: 34px 36px;
+    border-radius: 16px;
+    background: linear-gradient(135deg, #78350F 0%, #B45309 52%, #F59E0B 100%);
+  }
+  .quiz-kms-hero::before,
+  .quiz-kms-hero::after {
+    position: absolute;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.10);
+    content: "";
+    pointer-events: none;
+  }
+  .quiz-kms-hero::before { top: -65px; right: -30px; width: 210px; height: 210px; }
+  .quiz-kms-hero::after { right: 135px; bottom: -75px; width: 145px; height: 145px; background: rgba(255,255,255,0.06); }
+  .quiz-kms-hero-inner { position: relative; }
+  .quiz-kms-badge {
+    display: inline-block;
+    margin-bottom: 14px;
+    padding: 4px 14px;
+    border: 1px solid rgba(255,255,255,0.32);
+    border-radius: 20px;
+    background: rgba(255,255,255,0.18);
+    color: #FFFFFF !important;
+    font-size: 0.76em;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+  }
+  .quiz-kms-title { margin: 0 0 10px; color: #FFFFFF !important; font-size: 1.65em; font-weight: 800; line-height: 1.35; }
+  .quiz-kms-desc { margin: 0; color: rgba(255,255,255,0.88) !important; font-size: 0.92em; line-height: 1.7; }
+  .quiz-kms-lead { margin: 0 0 22px; font-size: 0.96em; }
+  .quiz-kms-summary { display: flex; flex-wrap: wrap; gap: 12px; margin: 18px 0 30px; }
+  .quiz-kms-summary-card {
+    flex: 1;
+    min-width: 180px;
+    padding: 19px 20px;
+    border: 1px solid #FDE68A;
+    border-top: 4px solid #F59E0B;
+    border-radius: 12px;
+    background: #FFFBEB;
+  }
+  .quiz-kms-summary-card,
+  .quiz-kms-summary-card * { color: #1E293B !important; }
+  .quiz-kms-summary-icon { margin-bottom: 8px; font-size: 1.55em; }
+  .quiz-kms-summary-title { margin-bottom: 3px; font-size: 0.92em; font-weight: 800; }
+  .quiz-kms-summary-text { margin: 0; color: #64748B !important; font-size: 0.84em; line-height: 1.6; }
+  .quiz-kms-h2-bar { margin: 32px 0 16px; padding: 2px 0 2px 14px; border-left: 5px solid #D97706; font-size: 1.12em; font-weight: 800; }
+  .quiz-kms-h2-line { margin: 34px 0 16px; padding-bottom: 10px; border-bottom: 2px solid #FEF3C7; font-size: 1.08em; font-weight: 800; }
+  .quiz-kms-table { width: 100%; margin: 16px 0; border-collapse: collapse; overflow: hidden; border-radius: 10px; font-size: 0.89em; }
+  .quiz-kms-table th { padding: 12px 14px; background: #92400E; color: #FFFFFF !important; text-align: left; font-weight: 800; }
+  .quiz-kms-table td { padding: 11px 14px; border-bottom: 1px solid #E2E8F0; }
+  .quiz-kms-table tr:nth-child(even) td { background: #FFFBEB; color: #1E293B !important; }
+  .quiz-kms-placeholder { color: #B91C1C !important; font-weight: 800; }
+  .quiz-kms-steps { display: flex; flex-direction: column; margin: 14px 0; }
+  .quiz-kms-step { position: relative; display: flex; align-items: flex-start; gap: 16px; padding: 13px 0; }
+  .quiz-kms-step:not(:last-child)::after { position: absolute; top: 50px; left: 18px; width: 2px; height: calc(100% - 24px); background: #FDE68A; content: ""; }
+  .quiz-kms-step-num {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #B45309, #F59E0B);
+    color: #FFFFFF !important;
+    font-size: 0.9em;
+    font-weight: 800;
+  }
+  .quiz-kms-step-body { flex: 1; }
+  .quiz-kms-step-title { margin: 3px 0 3px; font-size: 0.96em; font-weight: 800; }
+  .quiz-kms-step-desc { margin: 0; font-size: 0.88em; line-height: 1.65; }
+  .quiz-kms-quote {
+    position: relative;
+    margin: 18px 0;
+    padding: 24px 26px 20px;
+    border-radius: 13px;
+    background: linear-gradient(135deg, #FFF7ED, #FEF3C7);
+  }
+  .quiz-kms-quote,
+  .quiz-kms-quote * { color: #1E293B !important; }
+  .quiz-kms-quote-mark { display: block; margin-bottom: -11px; color: #FCD34D !important; font-family: Georgia, serif; font-size: 3.4em; line-height: 1; }
+  .quiz-kms-quote-text { margin: 0 0 10px; color: #78350F !important; font-size: 0.97em; font-weight: 700; line-height: 1.75; }
+  .quiz-kms-quote-label { color: #B45309 !important; font-size: 0.79em; font-weight: 800; }
+  .quiz-kms-box { margin: 16px 0; padding: 17px 20px; border-left: 4px solid #F59E0B; border-radius: 10px; background: #FFFBEB; }
+  .quiz-kms-box,
+  .quiz-kms-box * { color: #1E293B !important; }
+  .quiz-kms-box-title { margin-bottom: 6px; color: #92400E !important; font-size: 0.93em; font-weight: 800; }
+  .quiz-kms-box ul { margin: 5px 0 0; padding-left: 20px; }
+  .quiz-kms-box li { margin: 4px 0; font-size: 0.88em; line-height: 1.65; }
+  .quiz-kms-cta {
+    margin-top: 30px;
+    padding: 24px;
+    border-radius: 14px;
+    background: #78350F;
+    text-align: center;
+  }
+  .quiz-kms-cta,
+  .quiz-kms-cta * { color: #FFFFFF !important; }
+  .quiz-kms-cta-title { margin-bottom: 6px; font-size: 1.05em; font-weight: 800; }
+  .quiz-kms-cta-desc { margin: 0 0 15px; color: rgba(255,255,255,0.82) !important; font-size: 0.86em; }
+  .quiz-kms-cta-link {
+    display: inline-block;
+    padding: 10px 22px;
+    border-radius: 8px;
+    background: #FBBF24;
+    color: #451A03 !important;
+    font-size: 0.9em;
+    font-weight: 800;
+    text-decoration: none;
+  }
+  @media (max-width: 640px) {
+    .quiz-kms-hero { padding: 28px 22px; }
+    .quiz-kms-summary { display: block; }
+    .quiz-kms-summary-card { margin-bottom: 10px; }
+    .quiz-kms-table { font-size: 0.82em; }
+    .quiz-kms-table th, .quiz-kms-table td { padding: 9px 8px; }
+  }
+</style>
+
+<div class="quiz-kms-wrap">
+  <div class="quiz-kms-hero">
+    <div class="quiz-kms-hero-inner">
+      <span class="quiz-kms-badge">🏆 사내 참여 이벤트</span>
+      <h1 class="quiz-kms-title">하루 한 문제, 오늘의 퀴즈!</h1>
+      <p class="quiz-kms-desc">동료의 새로운 모습을 알아보고 매일 퀴즈에 도전해 보세요.<br>꾸준히 참여할수록 당첨 기회가 커집니다!</p>
+    </div>
+  </div>
+
+  <p class="quiz-kms-lead">임직원의 자발적인 참여를 유도하고 동료에 대한 관심과 조직 내 소통을 높이기 위해 <strong>‘오늘의 퀴즈’ 이벤트</strong>를 진행합니다. 이름과 사번으로 인증하면 매일 새로운 문제가 공개되며, 하루에 한 번 답안을 제출할 수 있습니다.</p>
+
+  <div class="quiz-kms-summary">
+    <div class="quiz-kms-summary-card">
+      <div class="quiz-kms-summary-icon">📅</div>
+      <div class="quiz-kms-summary-title">매일 한 문제</div>
+      <p class="quiz-kms-summary-text">이벤트 기간 동안 날짜별로 새로운 문제가 공개됩니다.</p>
+    </div>
+    <div class="quiz-kms-summary-card">
+      <div class="quiz-kms-summary-icon">✅</div>
+      <div class="quiz-kms-summary-title">간편한 참여</div>
+      <p class="quiz-kms-summary-text">이름과 사번으로 인증한 뒤 답 하나만 선택하면 완료됩니다.</p>
+    </div>
+    <div class="quiz-kms-summary-card">
+      <div class="quiz-kms-summary-icon">🎁</div>
+      <div class="quiz-kms-summary-title">참여 혜택</div>
+      <p class="quiz-kms-summary-text">정답 수와 참여 일수를 기준으로 총 30만 원 상당의 상품을 드립니다.</p>
+    </div>
+  </div>
+
+  <h2 class="quiz-kms-h2-bar">📌 이벤트 안내</h2>
+  <table class="quiz-kms-table">
+    <tbody>
+      <tr>
+        <th style="width: 25%;">진행 기간</th>
+        <td><strong>2026년 9월 3일(목) ~ 9월 30일(수)</strong></td>
+      </tr>
+      <tr>
+        <th>참여 대상</th>
+        <td>고객센터 상담사 및 관리자</td>
+      </tr>
+      <tr>
+        <th>참여 횟수</th>
+        <td>1인 1일 1회</td>
+      </tr>
+      <tr>
+        <th>결과 안내</th>
+        <td><strong>2026년 10월 2일(금)</strong></td>
+      </tr>
+      <tr>
+        <th>이벤트 상품</th>
+        <td>신세계상품권 · 총 300,000원 규모</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2 class="quiz-kms-h2-line">🎁 순위별 경품</h2>
+  <table class="quiz-kms-table">
+    <thead>
+      <tr>
+        <th>순위</th>
+        <th>인원</th>
+        <th>1인 지급액</th>
+        <th>경품</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td>1등</td><td>1명</td><td>50,000원</td><td>신세계상품권</td></tr>
+      <tr><td>2등</td><td>2명</td><td>40,000원</td><td>신세계상품권</td></tr>
+      <tr><td>3등</td><td>3명</td><td>30,000원</td><td>신세계상품권</td></tr>
+      <tr><td>4등</td><td>3명</td><td>20,000원</td><td>신세계상품권</td></tr>
+      <tr><td>5등</td><td>2명</td><td>10,000원</td><td>신세계상품권</td></tr>
+    </tbody>
+  </table>
+
+  <h2 class="quiz-kms-h2-line">🙋 참여 방법</h2>
+  <div class="quiz-kms-steps">
+    <div class="quiz-kms-step">
+      <div class="quiz-kms-step-num">1</div>
+      <div class="quiz-kms-step-body">
+        <div class="quiz-kms-step-title">이벤트 페이지 접속</div>
+        <p class="quiz-kms-step-desc">아래의 ‘오늘의 퀴즈 참여하기’ 버튼을 눌러 이벤트 페이지로 이동합니다.</p>
+      </div>
+    </div>
+    <div class="quiz-kms-step">
+      <div class="quiz-kms-step-num">2</div>
+      <div class="quiz-kms-step-body">
+        <div class="quiz-kms-step-title">직원 인증</div>
+        <p class="quiz-kms-step-desc">본인의 이름과 사번을 정확하게 입력해 인증합니다.</p>
+      </div>
+    </div>
+    <div class="quiz-kms-step">
+      <div class="quiz-kms-step-num">3</div>
+      <div class="quiz-kms-step-body">
+        <div class="quiz-kms-step-title">오늘의 문제 풀기</div>
+        <p class="quiz-kms-step-desc">공개된 문제를 확인하고 보기 중 하나를 선택합니다.</p>
+      </div>
+    </div>
+    <div class="quiz-kms-step">
+      <div class="quiz-kms-step-num">4</div>
+      <div class="quiz-kms-step-body">
+        <div class="quiz-kms-step-title">정답 제출 및 결과 확인</div>
+        <p class="quiz-kms-step-desc">‘정답 제출하기’를 누르면 정답 여부와 해설을 바로 확인할 수 있습니다.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="quiz-kms-quote">
+    <span class="quiz-kms-quote-mark">“</span>
+    <p class="quiz-kms-quote-text">본 퀴즈는 재미를 위해 출제되며, 정답에는 출제자의 주관과 사심이 반영될 수 있습니다. 이에 따라 정답과 관련한 이의 제기는 받지 않으니 너그러운 마음으로 즐겨 주세요!</p>
+    <div class="quiz-kms-quote-label">😄 재미로 즐기는 오늘의 퀴즈</div>
+  </div>
+
+  <h2 class="quiz-kms-h2-bar">⚠️ 꼭 확인해 주세요</h2>
+  <div class="quiz-kms-box">
+    <div class="quiz-kms-box-title">참여 전 유의사항</div>
+    <ul>
+      <li>당일 공개된 퀴즈에만 참여할 수 있으며, 답안은 하루 한 번만 제출할 수 있습니다.</li>
+      <li>직원 확인을 위해 이름과 사번을 정확하게 입력해 주세요.</li>
+      <li>이벤트 기간 내 <strong>정답 수</strong>를 우선으로 순위를 정하며, 정답 수가 같으면 <strong>참여 일수</strong>가 많은 순으로 결정합니다.</li>
+      <li>정답 수와 참여 일수가 모두 같으면 해당 순위 대상자 중 무작위 추첨으로 수상자를 선정합니다.</li>
+      <li>퀴즈는 재미를 위한 콘텐츠로, 출제자의 주관이 반영된 정답에 대해서는 이의를 제기할 수 없습니다.</li>
+    </ul>
+  </div>
+
+  <div class="quiz-kms-cta">
+    <div class="quiz-kms-cta-title">오늘의 문제, 지금 바로 확인해 보세요!</div>
+    <p class="quiz-kms-cta-desc">매일 참여하고 새로운 동료 이야기도 만나보세요.</p>
+    <a class="quiz-kms-cta-link" href="https://praise-event-342z.vercel.app/" target="_blank" rel="noopener noreferrer">오늘의 퀴즈 참여하기 →</a>
+  </div>
+</div>
