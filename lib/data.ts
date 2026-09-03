@@ -3,6 +3,7 @@ import { unstable_cache } from "next/cache";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { getActiveEvent, eventCollection, eventDocs, LEGACY_EVENT_ID, todayQuiz } from "@/lib/events";
 import { defaultSettings } from "@/lib/settings";
+import { ensureSeptember2026Quizzes } from "@/lib/september-2026-quizzes";
 import { ACTIVE, serialize, todaySeoul } from "@/lib/utils";
 
 export { defaultSettings } from "@/lib/settings";
@@ -20,6 +21,7 @@ export async function getSettings() {
 export async function getPublicData() {
   const adminDb = getAdminDb();
   const settings = await getActiveEvent();
+  if (settings.type === "quiz") await ensureSeptember2026Quizzes(settings.id);
   const praiseQuery = settings.id === LEGACY_EVENT_ID
     ? adminDb.collection("praises").orderBy("createdAt", "desc").limit(20)
     : eventCollection(settings.id, "praises").orderBy("createdAt", "desc").limit(20);

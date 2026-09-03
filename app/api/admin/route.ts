@@ -166,7 +166,7 @@ export async function POST(request: NextRequest) {
       refreshPublic = eventId === (await getActiveEvent()).id;
     } else if (action === "saveQuizzes") {
       const eventId = String(body.eventId || "");
-      const rows = (body.quizzes || []).map((quiz: any) => { const options = (quiz.options || []).map((option: unknown) => String(option).trim()).filter(Boolean); if (!/^\d{4}-\d{2}-\d{2}$/.test(String(quiz.date || "")) || !String(quiz.question || "").trim() || options.length < 2) throw new Error("퀴즈 날짜, 문제와 선택지를 확인해 주세요."); return { date: String(quiz.date), question: String(quiz.question).trim(), options, correctIndex: Math.min(options.length - 1, Math.max(0, Number(quiz.correctIndex || 0))), subject: String(quiz.subject || ""), explanation: String(quiz.explanation || ""), updatedAt: FieldValue.serverTimestamp() }; });
+      const rows = (body.quizzes || []).map((quiz: any) => { const options = (quiz.options || []).map((option: unknown) => String(option).trim()).filter(Boolean); if (!/^\d{4}-\d{2}-\d{2}$/.test(String(quiz.date || "")) || !String(quiz.question || "").trim() || options.length < 2) throw new Error("퀴즈 날짜, 문제와 선택지를 확인해 주세요."); return { date: String(quiz.date), question: String(quiz.question).trim(), options, correctIndex: Math.min(options.length - 1, Math.max(0, Number(quiz.correctIndex || 0))), subject: String(quiz.subject || ""), facilitatorComment: String(quiz.facilitatorComment ?? quiz.explanation ?? ""), updatedAt: FieldValue.serverTimestamp() }; });
       await replaceSubcollection(eventId, "quizzes", rows, (row) => row.date); await logAdmin("퀴즈 저장", eventId, `${rows.length}문제`);
       refreshPublic = eventId === (await getActiveEvent()).id;
     } else if (action === "updateQuizResponse") {

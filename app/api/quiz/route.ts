@@ -2,6 +2,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { eventCollection, getActiveEvent } from "@/lib/events";
+import { ensureSeptember2026Quizzes } from "@/lib/september-2026-quizzes";
 import { ACTIVE, isEventOpen, normalizeEmployeeId, normalizeEmployeeName, todaySeoul } from "@/lib/utils";
 
 export async function POST(request: NextRequest) {
@@ -9,6 +10,7 @@ export async function POST(request: NextRequest) {
     const adminDb = getAdminDb();
     const event = await getActiveEvent();
     if (event.type !== "quiz") throw new Error("현재 활성 이벤트는 퀴즈 이벤트가 아닙니다.");
+    await ensureSeptember2026Quizzes(event.id);
     if (!isEventOpen(event)) throw new Error("현재 이벤트 참여 기간이 아닙니다.");
 
     const body = await request.json();
@@ -48,7 +50,8 @@ export async function POST(request: NextRequest) {
       ok: true,
       correct: answer === Number(quiz.correctIndex),
       correctIndex: Number(quiz.correctIndex),
-      explanation: String(quiz.explanation || ""),
+      correctAnswer: String(options[Number(quiz.correctIndex)] || ""),
+      facilitatorComment: String(quiz.facilitatorComment || quiz.explanation || ""),
       message: answer === Number(quiz.correctIndex) ? "정답입니다!" : "내일 새로운 문제에 다시 도전해 주세요!",
     });
   } catch (error) {

@@ -32,7 +32,7 @@ type Settings = {
   detailNotes: string;
 };
 type EventSummary = Settings & { id: string; type: "praise" | "quiz"; status: "draft" | "active" | "closed" };
-type Quiz = { id?: string; date: string; question: string; options: string[]; correctIndex: number; subject?: string; explanation?: string };
+type Quiz = { id?: string; date: string; question: string; options: string[]; correctIndex: number; subject?: string; facilitatorComment?: string; explanation?: string };
 type QuizSubmission = { id?: string; answer?: number; correct?: boolean };
 type StickerStatus = { attendance: number; sent: number; received: number; total: number };
 type PublishedResult = { rank: number; prizeName: string; amount: number; employeeId: string; winnerName: string; tickets: number };
@@ -151,7 +151,7 @@ export default function EventApp() {
   const [busy, setBusy] = useState(false);
   const [quizAnswer, setQuizAnswer] = useState<number | null>(null);
   const [quizSubmission, setQuizSubmission] = useState<QuizSubmission | null>(null);
-  const [quizResult, setQuizResult] = useState<{ correct: boolean; correctIndex: number; explanation: string } | null>(null);
+  const [quizResult, setQuizResult] = useState<{ correct: boolean; correctIndex: number; correctAnswer: string; facilitatorComment: string } | null>(null);
 
   const refresh = async () => setData(await jsonFetch<PublicData>("/api/public"));
 
@@ -229,7 +229,7 @@ export default function EventApp() {
     if (!user || quizAnswer === null) return;
     setBusy(true);
     try {
-      const result = await jsonFetch<{ correct: boolean; correctIndex: number; explanation: string; message: string }>("/api/quiz", {
+      const result = await jsonFetch<{ correct: boolean; correctIndex: number; correctAnswer: string; facilitatorComment: string; message: string }>("/api/quiz", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ employeeId: user.employeeId, name: user.name, answer: quizAnswer }),
@@ -517,13 +517,13 @@ export default function EventApp() {
               </section>}
 
               {adminTab === "quizzes" && admin.settings.type === "quiz" && <section className="panel admin-section">
-                <div className="section-head compact"><div><h3>일자별 퀴즈</h3><p className="muted">날짜별로 한 문제를 등록합니다. 직원은 해당 날짜의 문제만 볼 수 있습니다.</p></div><button className="button secondary" onClick={() => setAdmin({ ...admin, quizzes: [...admin.quizzes, { date: "", question: "", options: ["", "", "", ""], correctIndex: 0, subject: "", explanation: "" }] })}>문제 추가</button></div>
+                <div className="section-head compact"><div><h3>일자별 퀴즈</h3><p className="muted">날짜별로 한 문제를 등록합니다. 직원은 해당 날짜의 문제만 볼 수 있습니다.</p></div><button className="button secondary" onClick={() => setAdmin({ ...admin, quizzes: [...admin.quizzes, { date: "", question: "", options: ["", "", "", ""], correctIndex: 0, subject: "", facilitatorComment: "" }] })}>문제 추가</button></div>
                 <div className="quiz-editor-list">
                   {admin.quizzes.map((quiz, quizIndex) => <article className="quiz-editor" key={quiz.id || quizIndex}>
                     <div className="quiz-editor-head"><label>공개일<input type="date" value={quiz.date} onChange={(e) => { const quizzes = [...admin.quizzes]; quizzes[quizIndex] = { ...quiz, date: e.target.value }; setAdmin({ ...admin, quizzes }); }} /></label><label>주인공 또는 주제<input value={quiz.subject || ""} onChange={(e) => { const quizzes = [...admin.quizzes]; quizzes[quizIndex] = { ...quiz, subject: e.target.value }; setAdmin({ ...admin, quizzes }); }} placeholder="예: 정지영 강사" /></label><button className="icon-button" onClick={() => setAdmin({ ...admin, quizzes: admin.quizzes.filter((_item, index) => index !== quizIndex) })}>삭제</button></div>
                     <label>문제<input value={quiz.question} onChange={(e) => { const quizzes = [...admin.quizzes]; quizzes[quizIndex] = { ...quiz, question: e.target.value }; setAdmin({ ...admin, quizzes }); }} placeholder="정지영 강사가 가장 좋아하는 색깔은?" /></label>
                     <div className="quiz-option-editor">{quiz.options.map((option, optionIndex) => <label key={optionIndex}><span>{optionIndex + 1}번</span><input value={option} onChange={(e) => { const quizzes = [...admin.quizzes]; const options = [...quiz.options]; options[optionIndex] = e.target.value; quizzes[quizIndex] = { ...quiz, options }; setAdmin({ ...admin, quizzes }); }} /></label>)}</div>
-                    <div className="two"><label>정답<select value={quiz.correctIndex} onChange={(e) => { const quizzes = [...admin.quizzes]; quizzes[quizIndex] = { ...quiz, correctIndex: Number(e.target.value) }; setAdmin({ ...admin, quizzes }); }}>{quiz.options.map((_option, index) => <option value={index} key={index}>{index + 1}번</option>)}</select></label><label>정답 공개 설명<input value={quiz.explanation || ""} onChange={(e) => { const quizzes = [...admin.quizzes]; quizzes[quizIndex] = { ...quiz, explanation: e.target.value }; setAdmin({ ...admin, quizzes }); }} placeholder="정답과 함께 보여줄 한마디" /></label></div>
+                    <div className="two"><label>정답<select value={quiz.correctIndex} onChange={(e) => { const quizzes = [...admin.quizzes]; quizzes[quizIndex] = { ...quiz, correctIndex: Number(e.target.value) }; setAdmin({ ...admin, quizzes }); }}>{quiz.options.map((_option, index) => <option value={index} key={index}>{index + 1}번</option>)}</select></label><label>진행자 한마디<input value={quiz.facilitatorComment ?? quiz.explanation ?? ""} onChange={(e) => { const quizzes = [...admin.quizzes]; quizzes[quizIndex] = { ...quiz, facilitatorComment: e.target.value }; setAdmin({ ...admin, quizzes }); }} placeholder="정답과 함께 보여줄 진행자 한마디" /></label></div>
                   </article>)}
                   {!admin.quizzes.length && <div className="empty-state compact-empty"><strong>등록된 퀴즈가 없습니다.</strong><p>문제 추가 버튼으로 첫 문제를 만들어 주세요.</p></div>}
                 </div>
@@ -664,7 +664,7 @@ export default function EventApp() {
                     <div className="quiz-day"><span>오늘의 주인공</span><strong>{data.quiz.subject || "우리 동료"}</strong></div>
                     <h2>{data.quiz.question}</h2>
                     <div className="quiz-options">{data.quiz.options.map((option, index) => <label className={quizAnswer === index ? "selected" : ""} key={index}><input type="radio" name="quiz-answer" checked={quizAnswer === index} onChange={() => setQuizAnswer(index)} disabled={Boolean(quizSubmission)} /><span>{index + 1}</span><strong>{option}</strong></label>)}</div>
-                    {quizSubmission ? <div className={`quiz-complete ${quizSubmission.correct ? "correct" : "incorrect"}`}><strong>{quizSubmission.correct ? "✓ 정답을 맞혔어요!" : "오늘의 퀴즈 참여 완료"}</strong><p>{quizResult?.explanation || "하루 한 문제씩 출제됩니다. 내일도 문제를 맞혀 주세요!"}</p></div> : <button className="button primary full" disabled={busy || quizAnswer === null}>{busy ? "제출하고 있어요…" : "정답 제출하기"}</button>}
+                    {quizSubmission ? <div className={`quiz-complete ${quizSubmission.correct ? "correct" : "incorrect"}`}><strong>{quizSubmission.correct ? "✓ 정답을 맞혔어요!" : "오늘의 퀴즈 참여 완료"}</strong><p>{quizResult?.facilitatorComment || "하루 한 문제씩 출제됩니다. 내일도 문제를 맞혀 주세요!"}</p></div> : <button className="button primary full" disabled={busy || quizAnswer === null}>{busy ? "제출하고 있어요…" : "정답 제출하기"}</button>}
                   </form>}
             </section>
           </>}
@@ -685,7 +685,10 @@ export default function EventApp() {
               <span className="section-label">QUIZ RESULT</span>
               <h2 id="quiz-result-title">{quizResult.correct ? "정답이에요!" : "아쉽지만 오답이에요"}</h2>
               <p>{quizResult.correct ? "멋지게 맞혔어요! 내일의 문제도 기대해 주세요." : "괜찮아요. 내일 새로운 문제에 다시 도전해 주세요!"}</p>
-              {quizResult.explanation && <div className="quiz-result-explanation"><strong>정답 해설</strong><span>{quizResult.explanation}</span></div>}
+              <div className="quiz-result-details">
+                <div className="quiz-result-explanation"><strong>정답</strong><span>{quizResult.correctIndex + 1}번 · {quizResult.correctAnswer}</span></div>
+                {quizResult.facilitatorComment && <div className="quiz-result-explanation"><strong>진행자 한마디</strong><span>{quizResult.facilitatorComment}</span></div>}
+              </div>
               <button type="button" className="button primary full" onClick={() => setQuizResult(null)}>확인</button>
             </section>
           )}

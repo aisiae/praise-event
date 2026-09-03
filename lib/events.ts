@@ -107,5 +107,5 @@ export async function todayQuiz(eventId: string) {
   const snap = await eventCollection(eventId, "quizzes").doc(todaySeoul()).get();
   if (!snap.exists) return null;
   const row = snap.data() || {};
-  return serialize({ id: snap.id, date: snap.id, question: row.question, options: row.options || [], subject: row.subject || "", explanation: row.explanation || "" });
+  return serialize({ id: snap.id, date: snap.id, question: row.question, options: row.options || [], subject: row.subject || "", facilitatorComment: row.facilitatorComment || row.explanation || "" });
 }
