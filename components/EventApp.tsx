@@ -36,7 +36,7 @@ type Quiz = { id?: string; date: string; question: string; options: string[]; co
 type QuizSubmission = { id?: string; answer?: number; correct?: boolean };
 type StickerStatus = { attendance: number; sent: number; received: number; total: number };
 type PublishedResult = { rank: number; prizeName: string; amount: number; employeeId: string; winnerName: string; tickets: number };
-type PublicData = {
+export type PublicData = {
   event: { id: string; type: "praise" | "quiz"; status: string };
   quiz: Quiz | null;
   settings: Settings;
@@ -60,28 +60,6 @@ type AdminData = {
   responses: Array<{ id: string; date: string; employeeId: string; name: string; answer: number; correct: boolean }>;
   hasPublishedResult: boolean;
   resultPublished: boolean;
-};
-
-const emptyPublic: PublicData = {
-  event: { id: "praise-legacy", type: "praise", status: "active" },
-  quiz: null,
-  settings: {
-    eventName: "칭찬 스티커 이벤트",
-    intro: "동료에게 따뜻한 칭찬과 고마움을 전하고 행운의 주인공이 되어 보세요.",
-    startDate: "",
-    endDate: "",
-    showResults: false,
-    minChars: 20,
-    detailSchedule: "이벤트 기간 동안 매일 참여할 수 있으며, 추첨 결과는 이벤트 종료 후 안내합니다.",
-    detailAttendance: "이벤트 기간 중 하루 1회 로그인하면 출석 스티커 1장이 지급됩니다.\n칭찬을 작성하거나 받으면 각각 스티커 1장이 추가됩니다.",
-    detailPrizes: "보유한 스티커 수를 기준으로 가중치 추첨을 진행합니다.\n등록된 상품과 수량은 이벤트 운영 상황에 따라 변경될 수 있습니다.",
-    detailNotes: "동일한 동료에게는 한 번만 칭찬할 수 있으며, 본인에게는 칭찬을 작성할 수 없습니다.",
-  },
-  employees: [],
-  praises: [],
-  prizes: [],
-  results: [],
-  stats: { employeeCount: 0, praiseCount: 0, todayAttendance: 0 },
 };
 
 const emptyStickerStatus: StickerStatus = { attendance: 0, sent: 0, received: 0, total: 0 };
@@ -122,8 +100,8 @@ function PraiseCard({ praise, onOpen, showWriter }: { praise: Praise; onOpen: ()
   );
 }
 
-export default function EventApp() {
-  const [data, setData] = useState<PublicData>(emptyPublic);
+export default function EventApp({ initialData }: { initialData: PublicData }) {
+  const [data, setData] = useState<PublicData>(initialData);
   const [user, setUser] = useState<Employee | null>(null);
   const [login, setLogin] = useState({ name: "", employeeId: "" });
   const [loginOpen, setLoginOpen] = useState(false);
@@ -156,7 +134,7 @@ export default function EventApp() {
   const refresh = async () => setData(await jsonFetch<PublicData>("/api/public"));
 
   useEffect(() => {
-    // Initial client hydration must load the active event from the server.
+    // Revalidate after hydration so actions in another session are reflected.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     refresh().catch((error) => setNotice(error.message));
     const savedAdminEmail = window.localStorage.getItem("praise-admin-email");
