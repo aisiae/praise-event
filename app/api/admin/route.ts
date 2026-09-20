@@ -24,7 +24,31 @@ function quizStandings(employeeDocs: FirebaseFirestore.QueryDocumentSnapshot[], 
   const participation = new Map<string, number>();
   const correct = new Map<string, number>();
   responseDocs.forEach((doc) => { const row = doc.data(); const id = String(row.employeeId || ""); participation.set(id, (participation.get(id) || 0) + 1); if (row.correct) correct.set(id, (correct.get(id) || 0) + 1); });
-  return employeeDocs.filter((doc) => !["휴직", "퇴직"].includes(String(doc.data().status))).map((doc) => ({ employeeId: doc.id, name: doc.data().name, attendance: participation.get(doc.id) || 0, sent: 0, received: correct.get(doc.id) || 0, tickets: participation.get(doc.id) || 0 }));
+  return employeeDocs.filter((doc) => !["휴직", "퇴직"].includes(String(doc.data().status))).map((doc) => {
+    const participationCount = participation.get(doc.id) || 0;
+    const correctCount = correct.get(doc.id) || 0;
+    return {
+      employeeId: doc.id, name: doc.data().name,
+      attendance: participationCount, sent: 0, received: correctCount, tickets: correctCount,
+      participationCount, correctCount,
+    };
+  });
+}
+
+function shuffleQuizTies<T extends { correctCount: number; participationCount: number }>(standings: T[]) {
+  const shuffled = [...standings];
+  for (let start = 0; start < shuffled.length;) {
+    let end = start + 1;
+    while (end < shuffled.length
+      && shuffled[end].correctCount === shuffled[start].correctCount
+      && shuffled[end].participationCount === shuffled[start].participationCount) end += 1;
+    for (let index = end - 1; index > start; index -= 1) {
+      const target = start + Math.floor(Math.random() * (index - start + 1));
+      [shuffled[index], shuffled[target]] = [shuffled[target], shuffled[index]];
+    }
+    start = end;
+  }
+  return shuffled;
 }
 
 async function adminData(selectedId?: string) {
@@ -38,14 +62,16 @@ async function adminData(selectedId?: string) {
     selectedEvent.type === "quiz" ? eventDocs(selectedEvent.id, "quizzes") : Promise.resolve([]), selectedEvent.type === "quiz" ? eventDocs(selectedEvent.id, "responses") : Promise.resolve([]),
     eventCollection(selectedEvent.id, "meta").doc("currentResult").get(),
   ]);
-  const standings = selectedEvent.type === "quiz" ? quizStandings(employees.docs, responses) : praiseStandings(employees.docs, praises, attendance);
+  const sortedStandings = selectedEvent.type === "quiz"
+    ? quizStandings(employees.docs, responses).sort((a, b) => b.correctCount - a.correctCount || b.participationCount - a.participationCount || a.name.localeCompare(b.name, "ko"))
+    : praiseStandings(employees.docs, praises, attendance).sort((a, b) => b.tickets - a.tickets || b.received - a.received || a.name.localeCompare(b.name, "ko"));
   return serialize({
     events, activeEventId: activeEvent.id, selectedEventId: selectedEvent.id,
     employees: employees.docs.map((doc) => ({ id: doc.id, ...doc.data() })), settings: selectedEvent,
     prizes: prizes.map((doc) => ({ id: doc.id, ...doc.data() })).sort((a: any, b: any) => Number(a.order || 999) - Number(b.order || 999)),
     praises: praises.map((doc) => ({ id: doc.id, ...doc.data() })).sort((a: any, b: any) => b.createdAt?.toMillis?.() - a.createdAt?.toMillis?.()),
     quizzes: quizzes.map((doc) => ({ id: doc.id, date: doc.id, ...doc.data() })).sort((a: any, b: any) => String(a.date).localeCompare(String(b.date))),
-    responses: responses.map((doc) => ({ id: doc.id, ...doc.data() })), standings: standings.sort((a, b) => b.tickets - a.tickets || b.received - a.received || a.name.localeCompare(b.name, "ko")),
+    responses: responses.map((doc) => ({ id: doc.id, ...doc.data() })), standings: sortedStandings,
     hasPublishedResult: result.exists, resultPublished: result.exists && Boolean(selectedEvent.showResults), publishedResults: result.data()?.results || [],
   }) as Record<string, unknown>;
 }
@@ -193,7 +219,17 @@ export async function POST(request: NextRequest) {
     } else if (action === "publishResults") {
       const eventId = String(body.eventId || ""); const current = await adminData(eventId) as any;
       const slots = current.prizes.flatMap((prize: any) => Array.from({ length: Math.max(1, Number(prize.quantity || 1)) }, () => prize));
-      const results = slots.map((prize: any, index: number) => ({ rank: index + 1, prizeName: prize.name, amount: prize.amount, employeeId: current.standings[index]?.employeeId || "", winnerName: current.standings[index]?.name || "", tickets: current.standings[index]?.tickets || 0 }));
+      const candidates = current.settings.type === "quiz"
+        ? shuffleQuizTies(current.standings.filter((row: any) => row.participationCount > 0))
+        : current.standings;
+      const results = slots.map((prize: any, index: number) => {
+        const winner: any = candidates[index];
+        return {
+          rank: index + 1, prizeName: prize.name, amount: prize.amount,
+          employeeId: winner?.employeeId || "", winnerName: winner?.name || "", tickets: winner?.tickets || 0,
+          ...(current.settings.type === "quiz" ? { correctCount: winner?.correctCount || 0, participationCount: winner?.participationCount || 0 } : {}),
+        };
+      });
       await Promise.all([eventCollection(eventId, "meta").doc("currentResult").set({ results, publishedAt: FieldValue.serverTimestamp() }), adminDb.collection("events").doc(eventId).set({ showResults: true, updatedAt: FieldValue.serverTimestamp() }, { merge: true })]); await logAdmin("이벤트 결과 공개", eventId, `${results.length}개 순위`);
       refreshPublic = eventId === (await getActiveEvent()).id;
     } else if (action === "toggleResultsVisibility") {
