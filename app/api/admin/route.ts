@@ -4,7 +4,7 @@ import { revalidateTag } from "next/cache";
 import { requireAdmin } from "@/lib/auth";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { ensureLegacyEvent, eventCollection, eventDocs, getActiveEvent, getEvent, LEGACY_EVENT_ID, listEvents, type EventType } from "@/lib/events";
-import { defaultSettings, quizPrizePreset } from "@/lib/settings";
+import { defaultSettings, instagramPrizePreset, quizPrizePreset } from "@/lib/settings";
 import { getCachedPublicData, logAdmin } from "@/lib/data";
 import { normalizeEmployeeId, normalizeEmployeeName, serialize } from "@/lib/utils";
 
@@ -35,6 +35,20 @@ function quizStandings(employeeDocs: FirebaseFirestore.QueryDocumentSnapshot[], 
   });
 }
 
+function instagramStandings(employeeDocs: FirebaseFirestore.QueryDocumentSnapshot[], postDocs: FirebaseFirestore.QueryDocumentSnapshot[], commentDocs: FirebaseFirestore.QueryDocumentSnapshot[], likeDocs: FirebaseFirestore.QueryDocumentSnapshot[]) {
+  const counts = (docs: FirebaseFirestore.QueryDocumentSnapshot[], field: string) => docs.reduce((map, doc) => { const id = String(doc.data()[field] || ""); map.set(id, (map.get(id) || 0) + 1); return map; }, new Map<string, number>());
+  const posts = counts(postDocs, "employeeId");
+  const comments = counts(commentDocs, "employeeId");
+  const likes = counts(likeDocs, "employeeId");
+  const postOwners = new Map(postDocs.map((doc) => [doc.id, String(doc.data().employeeId || "")]));
+  const popularity = new Map<string, number>();
+  likeDocs.forEach((doc) => { const owner = postOwners.get(String(doc.data().postId || "")); if (owner) popularity.set(owner, (popularity.get(owner) || 0) + 1); });
+  return employeeDocs.filter((doc) => !["휴직", "퇴직"].includes(String(doc.data().status))).map((doc) => ({
+    employeeId: doc.id, name: doc.data().name, attendance: posts.get(doc.id) || 0, sent: comments.get(doc.id) || 0, received: likes.get(doc.id) || 0,
+    tickets: (posts.get(doc.id) || 0) * 3 + (comments.get(doc.id) || 0) * 2 + (likes.get(doc.id) || 0), popularity: popularity.get(doc.id) || 0,
+  }));
+}
+
 function shuffleQuizTies<T extends { correctCount: number; participationCount: number }>(standings: T[]) {
   const shuffled = [...standings];
   for (let start = 0; start < shuffled.length;) {
@@ -56,14 +70,19 @@ async function adminData(selectedId?: string) {
   const adminDb = getAdminDb();
   const activeEvent = await getActiveEvent();
   const selectedEvent = await getEvent(selectedId || activeEvent.id);
-  const [events, employees, prizes, praises, attendance, quizzes, responses, result] = await Promise.all([
+  const [events, employees, prizes, praises, attendance, quizzes, responses, result, socialPosts, socialComments, socialLikes] = await Promise.all([
     listEvents(), adminDb.collection("employees").orderBy("name").get(), eventDocs(selectedEvent.id, "prizes"),
     selectedEvent.type === "praise" ? eventDocs(selectedEvent.id, "praises") : Promise.resolve([]), eventDocs(selectedEvent.id, "attendance"),
     selectedEvent.type === "quiz" ? eventDocs(selectedEvent.id, "quizzes") : Promise.resolve([]), selectedEvent.type === "quiz" ? eventDocs(selectedEvent.id, "responses") : Promise.resolve([]),
     eventCollection(selectedEvent.id, "meta").doc("currentResult").get(),
+    selectedEvent.type === "instagram" ? eventDocs(selectedEvent.id, "socialPosts") : Promise.resolve([]),
+    selectedEvent.type === "instagram" ? eventDocs(selectedEvent.id, "socialComments") : Promise.resolve([]),
+    selectedEvent.type === "instagram" ? eventDocs(selectedEvent.id, "socialLikes") : Promise.resolve([]),
   ]);
   const sortedStandings = selectedEvent.type === "quiz"
     ? quizStandings(employees.docs, responses).sort((a, b) => b.correctCount - a.correctCount || b.participationCount - a.participationCount || a.name.localeCompare(b.name, "ko"))
+    : selectedEvent.type === "instagram"
+      ? instagramStandings(employees.docs, socialPosts, socialComments, socialLikes).sort((a, b) => b.tickets - a.tickets || b.popularity - a.popularity || a.name.localeCompare(b.name, "ko"))
     : praiseStandings(employees.docs, praises, attendance).sort((a, b) => b.tickets - a.tickets || b.received - a.received || a.name.localeCompare(b.name, "ko"));
   return serialize({
     events, activeEventId: activeEvent.id, selectedEventId: selectedEvent.id,
@@ -72,6 +91,7 @@ async function adminData(selectedId?: string) {
     praises: praises.map((doc) => ({ id: doc.id, ...doc.data() })).sort((a: any, b: any) => b.createdAt?.toMillis?.() - a.createdAt?.toMillis?.()),
     quizzes: quizzes.map((doc) => ({ id: doc.id, date: doc.id, ...doc.data() })).sort((a: any, b: any) => String(a.date).localeCompare(String(b.date))),
     responses: responses.map((doc) => ({ id: doc.id, ...doc.data() })), standings: sortedStandings,
+    socialPosts: socialPosts.map((doc) => ({ id: doc.id, ...doc.data() })),
     hasPublishedResult: result.exists, resultPublished: result.exists && Boolean(selectedEvent.showResults), publishedResults: result.data()?.results || [],
   }) as Record<string, unknown>;
 }
@@ -133,18 +153,16 @@ export async function POST(request: NextRequest) {
       await adminDb.collection("employees").doc(employeeId).delete(); await logAdmin("직원 삭제", employeeId);
       refreshPublic = true;
     } else if (action === "createEvent") {
-      const type: EventType = body.type === "quiz" ? "quiz" : "praise"; const ref = adminDb.collection("events").doc(); selectedEventId = ref.id;
+      const type: EventType = body.type === "quiz" || body.type === "instagram" ? body.type : "praise"; const ref = adminDb.collection("events").doc(); selectedEventId = ref.id;
       await ref.set({
         ...defaultSettings,
-        eventName: type === "quiz" ? "새 오늘의 퀴즈" : "새 칭찬 우체국",
-        intro: type === "quiz" ? "하루 한 문제, 동료를 알아가는 산뜻한 퀴즈 이벤트입니다." : defaultSettings.intro,
+        eventName: type === "quiz" ? "새 오늘의 퀴즈" : type === "instagram" ? "새 나도 인스타!" : "새 칭찬 우체국",
+        intro: type === "quiz" ? "하루 한 문제, 동료를 알아가는 산뜻한 퀴즈 이벤트입니다." : type === "instagram" ? "특별한 일상을 사진으로 공유해 보세요." : defaultSettings.intro,
         detailAttendance: type === "quiz" ? "하루 한 문제씩 출제됩니다. 이름과 사번으로 인증한 뒤 오늘의 퀴즈에 참여해 주세요. 내일도 새로운 문제를 맞혀 주세요!" : "이벤트 기간 중 하루 1회 로그인하면 출석 스티커 1장이 지급됩니다.\n칭찬을 작성하거나 받으면 각각 스티커 1장이 추가됩니다.",
         detailNotes: type === "quiz" ? "한 직원은 하루에 한 번만 답을 제출할 수 있습니다." : "동일한 동료에게는 하루에 한 번만 칭찬할 수 있으며, 본인에게는 칭찬을 작성할 수 없습니다.",
         type, status: "draft", createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
       });
-      if (type === "quiz") {
-        await replaceSubcollection(selectedEventId, "prizes", quizPrizePreset, (_row, index) => `prize-${index + 1}`);
-      }
+      if (type === "quiz" || type === "instagram") await replaceSubcollection(selectedEventId, "prizes", type === "quiz" ? quizPrizePreset : instagramPrizePreset, (_row, index) => `prize-${index + 1}`);
       await logAdmin("이벤트 생성", selectedEventId, type);
     } else if (action === "copyEvent") {
       const sourceId = String(body.eventId || ""); const source = await getEvent(sourceId); const ref = adminDb.collection("events").doc(); selectedEventId = ref.id;
@@ -171,7 +189,7 @@ export async function POST(request: NextRequest) {
       if (!eventId || eventId === LEGACY_EVENT_ID) throw new Error("기존 첫 칭찬 이벤트는 삭제할 수 없습니다.");
       const active = await getActiveEvent();
       if (active.id === eventId) throw new Error("현재 활성 이벤트는 삭제할 수 없습니다. 다른 이벤트를 먼저 활성화해 주세요.");
-      for (const name of ["prizes", "quizzes", "responses", "attendance", "praises", "meta"]) {
+      for (const name of ["prizes", "quizzes", "responses", "attendance", "praises", "socialPosts", "socialComments", "socialLikes", "meta"]) {
         await deleteCollectionInChunks(eventCollection(eventId, name));
       }
       await adminDb.collection("events").doc(eventId).delete();
@@ -222,8 +240,14 @@ export async function POST(request: NextRequest) {
       const candidates = current.settings.type === "quiz"
         ? shuffleQuizTies(current.standings.filter((row: any) => row.participationCount > 0))
         : current.standings;
+      const popularCandidates = current.settings.type === "instagram"
+        ? [...current.standings].filter((row: any) => row.attendance > 0).sort((a: any, b: any) => b.popularity - a.popularity || b.tickets - a.tickets || a.name.localeCompare(b.name, "ko"))
+        : [];
+      let regularIndex = 0;
+      let popularIndex = 0;
       const results = slots.map((prize: any, index: number) => {
-        const winner: any = candidates[index];
+        const isPopular = current.settings.type === "instagram" && String(prize.name || "").includes("인기");
+        const winner: any = isPopular ? popularCandidates[popularIndex++] : candidates[regularIndex++];
         return {
           rank: index + 1, prizeName: prize.name, amount: prize.amount,
           employeeId: winner?.employeeId || "", winnerName: winner?.name || "", tickets: winner?.tickets || 0,

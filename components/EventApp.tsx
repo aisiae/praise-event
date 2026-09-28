@@ -17,9 +17,11 @@ type Praise = {
   content: string;
   createdAt?: string;
 };
+type SocialComment = { id: string; employeeId: string; authorName: string; content: string; createdAt?: string };
+type SocialPost = { id: string; employeeId: string; authorName: string; caption: string; imageData: string; capturedAt: string; createdAt?: string; comments: SocialComment[]; likedBy: string[] };
 type Settings = {
   id?: string;
-  type?: "praise" | "quiz";
+  type?: "praise" | "quiz" | "instagram";
   status?: "draft" | "active" | "closed";
   eventName: string;
   intro: string;
@@ -32,17 +34,18 @@ type Settings = {
   detailPrizes: string;
   detailNotes: string;
 };
-type EventSummary = Settings & { id: string; type: "praise" | "quiz"; status: "draft" | "active" | "closed" };
+type EventSummary = Settings & { id: string; type: "praise" | "quiz" | "instagram"; status: "draft" | "active" | "closed" };
 type Quiz = { id?: string; date: string; question: string; options: string[]; correctIndex: number; subject?: string; facilitatorComment?: string; explanation?: string };
 type QuizSubmission = { id?: string; answer?: number; correct?: boolean };
 type StickerStatus = { attendance: number; sent: number; received: number; total: number };
 type PublishedResult = { rank: number; prizeName: string; amount: number; employeeId: string; winnerName: string; tickets: number; correctCount?: number; participationCount?: number };
 export type PublicData = {
-  event: { id: string; type: "praise" | "quiz"; status: string };
+  event: { id: string; type: "praise" | "quiz" | "instagram"; status: string };
   quiz: Quiz | null;
   settings: Settings;
   employees: Employee[];
   praises: Praise[];
+  socialPosts: SocialPost[];
   prizes: Prize[];
   results: PublishedResult[];
   stats: { employeeCount: number; praiseCount: number; todayAttendance: number };
@@ -55,7 +58,7 @@ type AdminData = {
   prizes: Prize[];
   settings: Settings;
   results: Array<{ id: string; prizeName: string; winnerName: string }>;
-  standings: Array<{ employeeId: string; name: string; attendance: number; sent: number; received: number; tickets: number; correctCount?: number; participationCount?: number }>;
+  standings: Array<{ employeeId: string; name: string; attendance: number; sent: number; received: number; tickets: number; popularity?: number; correctCount?: number; participationCount?: number }>;
   praises: Praise[];
   quizzes: Quiz[];
   responses: Array<{ id: string; date: string; employeeId: string; name: string; answer: number; correct: boolean }>;
@@ -75,6 +78,18 @@ async function jsonFetch<T>(url: string, options?: RequestInit): Promise<T> {
 function formatDate(value?: string) {
   if (!value) return "";
   return new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric" }).format(new Date(value));
+}
+
+async function compressPhoto(file: File) {
+  const bitmap = await createImageBitmap(file);
+  const max = 1280;
+  const scale = Math.min(1, max / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  canvas.getContext("2d")?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close();
+  return canvas.toDataURL("image/jpeg", .72);
 }
 
 function EventPeriod({ settings }: { settings: Settings }) {
@@ -131,6 +146,8 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
   const [quizAnswer, setQuizAnswer] = useState<number | null>(null);
   const [quizSubmission, setQuizSubmission] = useState<QuizSubmission | null>(null);
   const [quizResult, setQuizResult] = useState<{ correct: boolean; correctIndex: number; correctAnswer: string; facilitatorComment: string } | null>(null);
+  const [socialDraft, setSocialDraft] = useState({ caption: "", imageData: "", capturedAt: "" });
+  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
 
   const refresh = async () => setData(await jsonFetch<PublicData>("/api/public"));
 
@@ -178,7 +195,7 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
         attendanceMessage: string;
         stickerStatus: StickerStatus;
         personalPraises: { received: Praise[]; sent: Praise[] };
-        eventType: "praise" | "quiz";
+        eventType: "praise" | "quiz" | "instagram";
         quizSubmission: QuizSubmission | null;
       }>("/api/employee/login", {
         method: "POST",
@@ -201,6 +218,19 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
     } finally {
       setBusy(false);
     }
+  };
+
+  const submitSocialAction = async (action: "post" | "comment" | "like", postId?: string) => {
+    if (!user) { setLoginOpen(true); return; }
+    setBusy(true);
+    try {
+      await jsonFetch("/api/instagram", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, employeeId: user.employeeId, name: user.name, postId, ...(action === "post" ? socialDraft : {}), ...(action === "comment" ? { content: commentDrafts[postId || ""] } : {}) }) });
+      if (action === "post") setSocialDraft({ caption: "", imageData: "", capturedAt: "" });
+      if (action === "comment" && postId) setCommentDrafts((value) => ({ ...value, [postId]: "" }));
+      setNotice(action === "post" ? "특별한 일상을 공유했습니다. 게시글 3점이 반영됩니다." : action === "comment" ? "댓글 2점이 반영됩니다." : "좋아요가 반영되었습니다.");
+      await refresh();
+    } catch (error) { setNotice(error instanceof Error ? error.message : "요청을 처리하지 못했습니다."); }
+    finally { setBusy(false); }
   };
 
   const submitQuiz = async (event: FormEvent) => {
@@ -375,7 +405,7 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
   };
 
   return (
-    <main className={data.event.type === "quiz" && !adminOpen ? "quiz-theme" : ""}>
+    <main className={!adminOpen ? data.event.type === "quiz" ? "quiz-theme" : data.event.type === "instagram" ? "instagram-theme" : "" : ""}>
       <header className="topbar">
         <button className="brand" onClick={() => setAdminOpen(false)} aria-label="메인 화면으로">
           <Image className="brand-logo" src="/hwamulman-logo.png" alt="화물맨" width={44} height={34} priority />
@@ -400,13 +430,13 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
       {!adminOpen && (
         <section className="hero">
           <div className="hero-copy">
-            <span className="eyebrow">{data.event.type === "quiz" ? "ONE QUIZ A DAY" : "PRAISE & ATTENDANCE"}</span>
+            <span className="eyebrow">{data.event.type === "quiz" ? "ONE QUIZ A DAY" : data.event.type === "instagram" ? "MY SPECIAL MOMENT" : "PRAISE & ATTENDANCE"}</span>
             <h1>{data.settings.eventName}</h1>
             <p>{data.settings.intro}</p>
             <div className="hero-info-actions"><EventPeriod settings={data.settings} /><button className="detail-button" onClick={() => setEventDetailOpen(true)}>상세보기 <span>→</span></button><button className="detail-button result-view-button" onClick={() => setResultOpen(true)}>결과 보기 <span>→</span></button></div>
           </div>
           <div className="hero-deco" aria-hidden="true">
-            {data.event.type === "quiz" ? <><span>오늘의</span><span>?</span><span>퀴즈!</span></> : <><span>칭찬</span><span>♥</span><span>고마워요!</span></>}
+            {data.event.type === "quiz" ? <><span>오늘의</span><span>?</span><span>퀴즈!</span></> : data.event.type === "instagram" ? <><span>찰칵!</span><span>📷</span><span>#일상</span></> : <><span>칭찬</span><span>♥</span><span>고마워요!</span></>}
           </div>
         </section>
       )}
@@ -439,7 +469,7 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
                   <div className="event-sidebar-head"><strong>이벤트 목록</strong><span>{admin.events.length}</span></div>
                   <div className="event-list">
                     {admin.events.map((event, index) => <div className={`event-list-row ${adminTab !== "employees" && admin.selectedEventId === event.id ? "active" : ""}`} key={event.id}>
-                      <button className="event-select-button" disabled={busy} onClick={() => loadAdminEvent(event.id)}><span>{event.type === "quiz" ? "Q" : "♥"}</span><div><strong>{event.eventName}</strong><small>{event.status === "active" ? "진행 중" : event.status === "closed" ? "종료" : "준비 중"}</small></div></button>
+                      <button className="event-select-button" disabled={busy} onClick={() => loadAdminEvent(event.id)}><span>{event.type === "quiz" ? "Q" : event.type === "instagram" ? "▣" : "♥"}</span><div><strong>{event.eventName}</strong><small>{event.status === "active" ? "진행 중" : event.status === "closed" ? "종료" : "준비 중"}</small></div></button>
                       <div className="event-row-actions">
                         <button aria-label={`${event.eventName} 위로 이동`} title="위로 이동" disabled={busy || index === 0} onClick={() => runAdmin({ action: "moveEvent", eventId: event.id, direction: "up" }, "이벤트 순서를 변경했습니다.")}>↑</button>
                         <button aria-label={`${event.eventName} 아래로 이동`} title="아래로 이동" disabled={busy || index === admin.events.length - 1} onClick={() => runAdmin({ action: "moveEvent", eventId: event.id, direction: "down" }, "이벤트 순서를 변경했습니다.")}>↓</button>
@@ -450,6 +480,7 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
                   <div className="event-create-actions">
                     <button className="button secondary" disabled={busy} onClick={() => runAdmin({ action: "createEvent", type: "quiz" }, "새 퀴즈 이벤트를 만들었습니다.")}>+ 퀴즈 이벤트</button>
                     <button className="button secondary" disabled={busy} onClick={() => runAdmin({ action: "createEvent", type: "praise" }, "새 칭찬 이벤트를 만들었습니다.")}>+ 칭찬 이벤트</button>
+                    <button className="button secondary" disabled={busy} onClick={() => runAdmin({ action: "createEvent", type: "instagram" }, "새 나도 인스타 이벤트를 만들었습니다.")}>+ 사진 이벤트</button>
                     <button className="button secondary" disabled={busy} onClick={() => runAdmin({ action: "copyEvent" }, "이벤트 설정을 복사했습니다.")}>선택 이벤트 복사</button>
                   </div>
                   <div className="common-admin-nav">
@@ -481,7 +512,7 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
               </div>}
 
               {adminTab === "settings" && <section className="panel admin-section settings-panel">
-                  <div className="section-head compact"><div><h3>이벤트 설정</h3><p className="muted">{admin.settings.type === "quiz" ? "오늘의 퀴즈" : "칭찬 우체국"} · {admin.settings.status === "active" ? "진행 중" : admin.settings.status === "closed" ? "종료" : "준비 중"}</p></div>{admin.activeEventId !== admin.selectedEventId && <button className="button accent" disabled={busy} onClick={() => confirm("이 이벤트를 일반 화면에 활성화할까요? 현재 활성 이벤트는 종료 처리됩니다.") && runAdmin({ action: "activateEvent" }, "선택한 이벤트를 활성화했습니다.")}>이벤트 활성화</button>}</div>
+                  <div className="section-head compact"><div><h3>이벤트 설정</h3><p className="muted">{admin.settings.type === "quiz" ? "오늘의 퀴즈" : admin.settings.type === "instagram" ? "나도 인스타" : "칭찬 우체국"} · {admin.settings.status === "active" ? "진행 중" : admin.settings.status === "closed" ? "종료" : "준비 중"}</p></div>{admin.activeEventId !== admin.selectedEventId && <button className="button accent" disabled={busy} onClick={() => confirm("이 이벤트를 일반 화면에 활성화할까요? 현재 활성 이벤트는 종료 처리됩니다.") && runAdmin({ action: "activateEvent" }, "선택한 이벤트를 활성화했습니다.")}>이벤트 활성화</button>}</div>
                   <label>이벤트명<input value={admin.settings.eventName} onChange={(e) => setAdmin({ ...admin, settings: { ...admin.settings, eventName: e.target.value } })} /></label>
                   <label>소개 문구<input value={admin.settings.intro} onChange={(e) => setAdmin({ ...admin, settings: { ...admin.settings, intro: e.target.value } })} /></label>
                   <div className="two">
@@ -489,7 +520,7 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
                     <label>종료일<input type="date" value={admin.settings.endDate} onChange={(e) => setAdmin({ ...admin, settings: { ...admin.settings, endDate: e.target.value } })} /></label>
                   </div>
                   <label>일정 안내<textarea rows={3} value={admin.settings.detailSchedule} onChange={(e) => setAdmin({ ...admin, settings: { ...admin.settings, detailSchedule: e.target.value } })} /></label>
-                  <label>스티커 지급 기준<textarea rows={4} value={admin.settings.detailAttendance} onChange={(e) => setAdmin({ ...admin, settings: { ...admin.settings, detailAttendance: e.target.value } })} /></label>
+                  <label>{admin.settings.type === "instagram" ? "점수 지급 기준" : "스티커 지급 기준"}<textarea rows={4} value={admin.settings.detailAttendance} onChange={(e) => setAdmin({ ...admin, settings: { ...admin.settings, detailAttendance: e.target.value } })} /></label>
                   <label>상품 안내<textarea rows={4} value={admin.settings.detailPrizes} onChange={(e) => setAdmin({ ...admin, settings: { ...admin.settings, detailPrizes: e.target.value } })} /></label>
                   <label>유의사항<textarea rows={3} value={admin.settings.detailNotes} onChange={(e) => setAdmin({ ...admin, settings: { ...admin.settings, detailNotes: e.target.value } })} /></label>
                   <button className="button primary" disabled={busy} onClick={() => runAdmin({ action: "saveSettings", settings: admin.settings }, "설정을 저장했습니다.")}>설정 저장</button>
@@ -539,8 +570,8 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
               </section>}
 
               {adminTab === "status" && <section className="panel admin-section">
-                <div className="section-head compact"><div><h3>{admin.settings.type === "quiz" ? "직원별 퀴즈 참여 현황" : "직원별 스티커 현황"}</h3><p className="muted">{admin.settings.type === "quiz" ? "제출한 날짜 수와 정답 수를 확인합니다." : "출석과 칭찬 활동을 합산한 현재 스코어입니다."}</p></div><button className="button secondary" onClick={() => adminRequest()}>새로고침</button></div>
-                <div className="table-wrap"><table><thead><tr><th>순위</th><th>직원</th><th>{admin.settings.type === "quiz" ? "참여 일수" : "출석"}</th><th>{admin.settings.type === "quiz" ? "정답 수" : "보낸 칭찬"}</th>{admin.settings.type === "praise" && <th>받은 칭찬</th>}<th>{admin.settings.type === "quiz" ? "순위 기준" : "총 스티커"}</th></tr></thead><tbody>{admin.standings.map((row, index) => <tr key={row.employeeId}><td>{index + 1}</td><td><strong>{row.name}</strong><small>{row.employeeId}</small></td><td>{row.attendance}</td><td>{admin.settings.type === "quiz" ? row.received : row.sent}</td>{admin.settings.type === "praise" && <td>{row.received}</td>}<td><strong className="score">{admin.settings.type === "quiz" ? `정답 ${row.correctCount ?? row.received} · 참여 ${row.participationCount ?? row.attendance}일` : row.tickets}</strong></td></tr>)}</tbody></table></div>
+                <div className="section-head compact"><div><h3>{admin.settings.type === "quiz" ? "직원별 퀴즈 참여 현황" : admin.settings.type === "instagram" ? "직원별 활동 점수" : "직원별 스티커 현황"}</h3><p className="muted">{admin.settings.type === "quiz" ? "제출한 날짜 수와 정답 수를 확인합니다." : admin.settings.type === "instagram" ? "게시글 3점 · 댓글 2점 · 좋아요 1점, 동점은 게시글 인기순입니다." : "출석과 칭찬 활동을 합산한 현재 스코어입니다."}</p></div><button className="button secondary" onClick={() => adminRequest()}>새로고침</button></div>
+                <div className="table-wrap"><table><thead><tr><th>순위</th><th>직원</th><th>{admin.settings.type === "quiz" ? "참여 일수" : admin.settings.type === "instagram" ? "게시글" : "출석"}</th><th>{admin.settings.type === "quiz" ? "정답 수" : admin.settings.type === "instagram" ? "댓글" : "보낸 칭찬"}</th>{admin.settings.type !== "quiz" && <th>{admin.settings.type === "instagram" ? "좋아요" : "받은 칭찬"}</th>}<th>{admin.settings.type === "quiz" ? "순위 기준" : admin.settings.type === "instagram" ? "총점 / 인기" : "총 스티커"}</th></tr></thead><tbody>{admin.standings.map((row, index) => <tr key={row.employeeId}><td>{index + 1}</td><td><strong>{row.name}</strong><small>{row.employeeId}</small></td><td>{row.attendance}</td><td>{admin.settings.type === "quiz" ? row.received : row.sent}</td>{admin.settings.type !== "quiz" && <td>{row.received}</td>}<td><strong className="score">{admin.settings.type === "quiz" ? `정답 ${row.correctCount ?? row.received} · 참여 ${row.participationCount ?? row.attendance}일` : admin.settings.type === "instagram" ? `${row.tickets}점 · 인기 ${row.popularity || 0}` : row.tickets}</strong></td></tr>)}</tbody></table></div>
                 {admin.settings.type === "quiz" && <div className="quiz-response-admin">
                   <div className="section-head compact"><div><h3>퀴즈 제출 기록 관리</h3><p className="muted">답안을 수정하거나 테스트 기록을 삭제하면 해당 직원이 같은 날짜의 문제에 다시 참여할 수 있습니다.</p></div><span className="count">{admin.responses.length}</span></div>
                   <div className="table-wrap"><table><thead><tr><th>날짜</th><th>직원</th><th>제출 답안</th><th>결과</th><th>관리</th></tr></thead><tbody>{admin.responses.map((response, responseIndex) => { const quiz = admin.quizzes.find((item) => item.date === response.date); return <tr key={response.id}><td>{formatDate(response.date)}</td><td><strong>{response.name}</strong><small>{response.employeeId}</small></td><td><select aria-label={`${response.name} 제출 답안`} value={response.answer} onChange={(event) => { const responses = [...admin.responses]; responses[responseIndex] = { ...response, answer: Number(event.target.value) }; setAdmin({ ...admin, responses }); }}>{quiz?.options.map((option, index) => <option key={index} value={index}>{index + 1}번 · {option}</option>) || <option value={response.answer}>{response.answer + 1}번</option>}</select></td><td><span className={`answer-status ${response.correct ? "correct" : "incorrect"}`}>{response.correct ? "정답" : "오답"}</span></td><td><div className="employee-actions"><button className="table-action save" disabled={busy || !quiz} onClick={() => runAdmin({ action: "updateQuizResponse", responseId: response.id, answer: response.answer }, "제출 답안을 수정했습니다.")}>수정</button><button className="table-action delete" disabled={busy} onClick={async () => { if (!confirm(`${response.name}님의 ${formatDate(response.date)} 제출 기록을 삭제할까요? 삭제 후 다시 참여할 수 있습니다.`)) return; await runAdmin({ action: "deleteQuizResponse", responseId: response.id }, "퀴즈 제출 기록을 삭제했습니다."); if (user?.employeeId === response.employeeId) { setQuizSubmission(null); setQuizResult(null); setQuizAnswer(null); } }}>삭제</button></div></td></tr>; })}</tbody></table></div>
@@ -550,8 +581,8 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
 
               {adminTab === "results" && <section className="admin-result-grid admin-section">
                 <section className="panel">
-                  <div className="section-head compact"><div><h3>{admin.settings.type === "quiz" ? "현재 퀴즈 순위" : "현재 직원 스코어"}</h3><p className="muted">{admin.settings.type === "quiz" ? "정답 수가 많은 순, 동률이면 참여 일수가 많은 순입니다." : "스티커가 많은 순서입니다."}</p></div><button className="button secondary" onClick={() => adminRequest()}>실시간 새로고침</button></div>
-                  <ol className="score-list">{admin.standings.map((row) => <li key={row.employeeId}><span>{row.name}</span><strong>{admin.settings.type === "quiz" ? `정답 ${row.correctCount ?? row.received}개 · 참여 ${row.participationCount ?? row.attendance}일` : `${row.tickets}장`}</strong></li>)}</ol>
+                  <div className="section-head compact"><div><h3>{admin.settings.type === "quiz" ? "현재 퀴즈 순위" : admin.settings.type === "instagram" ? "현재 활동 순위" : "현재 직원 스코어"}</h3><p className="muted">{admin.settings.type === "quiz" ? "정답 수가 많은 순, 동률이면 참여 일수가 많은 순입니다." : admin.settings.type === "instagram" ? "총점이 같으면 작성 게시글이 받은 좋아요 순으로 정렬됩니다." : "스티커가 많은 순서입니다."}</p></div><button className="button secondary" onClick={() => adminRequest()}>실시간 새로고침</button></div>
+                  <ol className="score-list">{admin.standings.map((row) => <li key={row.employeeId}><span>{row.name}</span><strong>{admin.settings.type === "quiz" ? `정답 ${row.correctCount ?? row.received}개 · 참여 ${row.participationCount ?? row.attendance}일` : admin.settings.type === "instagram" ? `${row.tickets}점 · 인기 ${row.popularity || 0}` : `${row.tickets}장`}</strong></li>)}</ol>
                 </section>
                 <section className="panel">
                   <div className="section-head compact"><div><h3>실시간 상품 순위</h3><p className="muted">{admin.settings.type === "quiz" ? "완전 동률인 경우 결과 공개 시 무작위로 순서가 결정됩니다." : "스티커 스코어가 바뀌면 직원 순위도 자동으로 변경됩니다."}</p></div></div>
@@ -633,6 +664,30 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
               </form>
             </section>
           )}
+          </> : data.event.type === "instagram" ? <>
+            <section className="entry-strip instagram-entry-strip">
+              <div className="entry-message"><span className="entry-icon">▣</span><div><strong>{user ? `${user.name}님, 오늘의 특별한 순간은 무엇인가요?` : "직원 인증 후 특별한 일상을 공유해 보세요"}</strong><span>게시글 3점 · 댓글 2점 · 좋아요 1점</span></div></div>
+              {!user && <button className="button entry-button" onClick={() => setLoginOpen(true)}>직원 인증하고 참여하기 <span>→</span></button>}
+            </section>
+            {user && <form className="social-compose panel" onSubmit={(event) => { event.preventDefault(); submitSocialAction("post"); }}>
+              <div><span className="section-label">NEW POST</span><h2>특별한 일상 올리기</h2><p>카메라로 촬영하거나 사진을 선택해 주세요. 촬영 일시는 게시물에 함께 표시됩니다.</p></div>
+              <label className={`photo-picker ${socialDraft.imageData ? "has-photo" : ""}`}>
+                {socialDraft.imageData ? <Image unoptimized src={socialDraft.imageData} alt="업로드할 사진 미리보기" width={800} height={800} /> : <><span>📷</span><strong>사진 촬영 또는 선택</strong><small>모바일에서는 카메라가 바로 열려요</small></>}
+                <input type="file" accept="image/*" capture="environment" onChange={async (event) => { const file = event.target.files?.[0]; if (!file) return; setBusy(true); try { const imageData = await compressPhoto(file); setSocialDraft((value) => ({ ...value, imageData, capturedAt: new Date().toISOString().slice(0, 16) })); } catch { setNotice("사진을 불러오지 못했습니다."); } finally { setBusy(false); } }} />
+              </label>
+              <div className="social-compose-fields"><label>촬영 일시<input type="datetime-local" value={socialDraft.capturedAt} onChange={(event) => setSocialDraft({ ...socialDraft, capturedAt: event.target.value })} required /></label><label>사진 이야기<textarea rows={3} maxLength={300} value={socialDraft.caption} onChange={(event) => setSocialDraft({ ...socialDraft, caption: event.target.value })} placeholder="이 순간이 특별한 이유를 들려주세요." required /></label><button className="button primary full" disabled={busy || !socialDraft.imageData || socialDraft.caption.trim().length < 5}>게시하고 3점 받기</button></div>
+            </form>}
+            <section className="social-wall-head"><div><span className="section-label">PHOTO FEED</span><h2>우리의 특별한 일상</h2><p>동료의 순간에 좋아요와 댓글을 남겨 보세요.</p></div><strong>{data.socialPosts.length} posts</strong></section>
+            <section className="social-feed">
+              {data.socialPosts.length ? data.socialPosts.map((post) => { const liked = Boolean(user?.employeeId && post.likedBy.includes(user.employeeId)); return <article className="social-card" key={post.id}>
+                <div className="social-author"><span>{post.authorName.slice(0, 1)}</span><div><strong>{post.authorName}</strong><small>{formatDate(post.createdAt)}</small></div></div>
+                <div className="social-photo"><Image unoptimized src={post.imageData} alt={`${post.authorName}님의 특별한 일상`} width={900} height={900} /><span>◷ {new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(post.capturedAt))}</span></div>
+                <div className="social-card-body"><div className="social-actions"><button type="button" className={liked ? "liked" : ""} disabled={busy} onClick={() => submitSocialAction("like", post.id)} aria-label="좋아요">{liked ? "♥" : "♡"} {post.likedBy.length}</button><span>댓글 {post.comments.length}</span></div><p><strong>{post.authorName}</strong> {post.caption}</p>
+                  <div className="social-comments">{post.comments.map((comment) => <p key={comment.id}><strong>{comment.authorName}</strong> {comment.content}</p>)}</div>
+                  {user ? <form onSubmit={(event) => { event.preventDefault(); submitSocialAction("comment", post.id); }}><input aria-label="댓글" maxLength={150} value={commentDrafts[post.id] || ""} onChange={(event) => setCommentDrafts({ ...commentDrafts, [post.id]: event.target.value })} placeholder="댓글을 남기고 2점 받기" /><button disabled={busy || !(commentDrafts[post.id] || "").trim()}>게시</button></form> : <button className="social-login-prompt" onClick={() => setLoginOpen(true)}>인증 후 좋아요와 댓글 남기기</button>}
+                </div>
+              </article>; }) : <div className="empty-state"><span>📷</span><strong>아직 공유된 사진이 없어요</strong><p>첫 번째 특별한 일상을 올려 보세요.</p></div>}
+            </section>
           </> : <>
             <section className="entry-strip quiz-entry-strip">
               <div className="entry-message"><span className="entry-icon">Q</span><div><strong>{user ? `${user.name}님, 오늘의 문제가 도착했어요!` : "직원 인증 후 오늘의 퀴즈에 참여해 보세요"}</strong><span>하루 한 문제씩 출제됩니다. 내일도 문제를 맞혀 주세요!</span></div></div>
@@ -683,7 +738,7 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
               <p className="muted">이름과 사번으로 재직 직원 여부를 확인합니다.</p>
               <label>이름<input autoFocus value={login.name} onChange={(e) => setLogin({ ...login, name: e.target.value })} placeholder="이름을 입력해 주세요" required /></label>
               <label>사번<input inputMode="numeric" value={login.employeeId} onChange={(e) => setLogin({ ...login, employeeId: e.target.value })} placeholder="사번을 입력해 주세요" required /></label>
-              <button className="button primary full" disabled={busy}>{busy ? "확인하고 있어요…" : data.event.type === "quiz" ? "인증하고 퀴즈 보기" : "입장하고 스티커 받기"}</button>
+              <button className="button primary full" disabled={busy}>{busy ? "확인하고 있어요…" : data.event.type === "quiz" ? "인증하고 퀴즈 보기" : data.event.type === "instagram" ? "인증하고 사진 피드 보기" : "입장하고 스티커 받기"}</button>
             </form>
           )}
           {loginResultOpen && (
@@ -729,7 +784,7 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
               <h2>{data.settings.eventName} 안내</h2>
               <div className="event-detail-list">
                 <article><span className="detail-number">01</span><div><h3>이벤트 일정</h3><p>{data.settings.detailSchedule}</p><EventPeriod settings={data.settings} /></div></article>
-                <article><span className="detail-number">02</span><div><h3>{data.event.type === "quiz" ? "퀴즈 참여 및 출석 기준" : "출석 스티커 제공 기준"}</h3><p>{data.settings.detailAttendance}</p></div></article>
+                <article><span className="detail-number">02</span><div><h3>{data.event.type === "quiz" ? "퀴즈 참여 및 출석 기준" : data.event.type === "instagram" ? "활동 점수 기준" : "출석 스티커 제공 기준"}</h3><p>{data.settings.detailAttendance}</p></div></article>
                 <article><span className="detail-number">03</span><div><h3>상품 내용</h3><p>{data.settings.detailPrizes}</p>{data.prizes.length > 0 && <ul>{data.prizes.map((prize, index) => <li key={prize.id || index}><strong>{index + 1}위</strong> {prize.name} · {prize.quantity}개</li>)}</ul>}</div></article>
                 <article><span className="detail-number">04</span><div><h3>유의사항</h3><p>{data.settings.detailNotes}</p></div></article>
               </div>

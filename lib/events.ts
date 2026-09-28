@@ -1,10 +1,11 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase-admin";
-import { defaultSettings } from "@/lib/settings";
+import { defaultSettings, instagramPrizePreset } from "@/lib/settings";
 import { serialize, todaySeoul } from "@/lib/utils";
 
 export const LEGACY_EVENT_ID = "praise-legacy";
-export type EventType = "praise" | "quiz";
+export const INSTAGRAM_EVENT_ID = "instagram-2026-10";
+export type EventType = "praise" | "quiz" | "instagram";
 export type EventStatus = "draft" | "active" | "closed";
 
 export type EventRecord = typeof defaultSettings & {
@@ -20,7 +21,7 @@ function normalizeEvent(id: string, value: FirebaseFirestore.DocumentData = {}):
     ...defaultSettings,
     ...value,
     id,
-    type: value.type === "quiz" ? "quiz" : "praise",
+    type: value.type === "quiz" || value.type === "instagram" ? value.type : "praise",
     status: ["draft", "active", "closed"].includes(String(value.status)) ? value.status : "draft",
   } as EventRecord;
 }
@@ -57,6 +58,33 @@ export async function ensureLegacyEvent() {
     changed = true;
   }
   if (changed) await batch.commit();
+  await ensureInstagramEvent();
+}
+
+async function ensureInstagramEvent() {
+  const adminDb = getAdminDb();
+  const ref = adminDb.collection("events").doc(INSTAGRAM_EVENT_ID);
+  const snap = await ref.get();
+  if (snap.exists) return;
+  const batch = adminDb.batch();
+  batch.set(ref, {
+    ...defaultSettings,
+    eventName: "나도 인스타!",
+    intro: "타임스탬프로 포착한 특별한 일상을 사진과 함께 공유해 보세요.",
+    startDate: "2026-10-01",
+    endDate: "2026-10-31",
+    type: "instagram",
+    status: "draft",
+    minChars: 5,
+    detailSchedule: "2026년 10월 1일부터 10월 31일까지 특별한 일상을 공유해 주세요.",
+    detailAttendance: "게시글 3점 · 댓글 2점 · 좋아요 1점으로 활동 점수를 합산합니다.",
+    detailPrizes: "총 30만원 상당의 상품권을 지급합니다. 1등 1명 10만원, 2등 2명 각 5만원, 3등 2명 각 3만원, 인기 게시글 2명 각 2만원입니다.",
+    detailNotes: "사진에는 촬영 일시를 확인할 수 있는 타임스탬프가 보여야 합니다. 활동 점수가 같으면 본인이 작성한 게시글이 받은 좋아요 합계가 높은 순으로 선정합니다.",
+    createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+  instagramPrizePreset.forEach((prize, index) => batch.set(eventCollection(INSTAGRAM_EVENT_ID, "prizes").doc(`prize-${index + 1}`), { ...prize, active: true, order: index + 1, eventId: INSTAGRAM_EVENT_ID }));
+  await batch.commit();
 }
 
 export async function getEvent(eventId: string) {

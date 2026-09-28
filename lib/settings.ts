@@ -18,3 +18,10 @@ export const quizPrizePreset = [
   { name: "신세계상품권", amount: 20000, quantity: 3 },
   { name: "신세계상품권", amount: 10000, quantity: 2 },
 ];
+
+export const instagramPrizePreset = [
+  { name: "1등 상품권", amount: 100000, quantity: 1 },
+  { name: "2등 상품권", amount: 50000, quantity: 2 },
+  { name: "3등 상품권", amount: 30000, quantity: 2 },
+  { name: "인기 게시글 상품권", amount: 20000, quantity: 2 },
+];

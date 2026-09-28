@@ -83,6 +83,8 @@ export async function POST(request: NextRequest) {
         ? "현재 이벤트 참여 기간이 아닙니다."
         : settings.type === "quiz"
           ? quizSubmission ? "오늘의 퀴즈에 이미 참여했습니다." : "인증되었습니다. 오늘의 퀴즈에 참여해 주세요!"
+        : settings.type === "instagram"
+          ? "인증되었습니다. 특별한 일상을 사진으로 공유해 주세요!"
         : attendanceAwarded
           ? "오늘의 출석 스티커 1장을 받았습니다!"
           : "오늘 출석 스티커는 이미 받았습니다.",
