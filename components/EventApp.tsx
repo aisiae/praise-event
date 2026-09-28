@@ -41,6 +41,7 @@ type StickerStatus = { attendance: number; sent: number; received: number; total
 type PublishedResult = { rank: number; prizeName: string; amount: number; employeeId: string; winnerName: string; tickets: number; correctCount?: number; participationCount?: number };
 export type PublicData = {
   preview?: boolean;
+  testMode?: boolean;
   event: { id: string; type: "praise" | "quiz" | "instagram"; status: string };
   quiz: Quiz | null;
   settings: Settings;
@@ -150,7 +151,7 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
   const [socialDraft, setSocialDraft] = useState({ caption: "", imageData: "", capturedAt: "" });
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
 
-  const refresh = useCallback(async () => { if (!initialData.preview) setData(await jsonFetch<PublicData>("/api/public")); }, [initialData.preview]);
+  const refresh = useCallback(async () => { if (!initialData.preview) setData(await jsonFetch<PublicData>(initialData.testMode ? "/api/instagram?test=1" : "/api/public")); }, [initialData.preview, initialData.testMode]);
 
   useEffect(() => {
     // Revalidate after hydration so actions in another session are reflected.
@@ -190,6 +191,10 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
     event.preventDefault();
     setBusy(true);
     try {
+      if (data.testMode) {
+        const result = await jsonFetch<{ employee: Employee; message: string }>("/api/instagram", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "login", testMode: true, ...login }) });
+        setUser(result.employee); setNotice(result.message); setLoginOpen(false); await refresh(); return;
+      }
       const result = await jsonFetch<{
         employee: Employee;
         attendanceAwarded: boolean;
@@ -226,7 +231,7 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
     if (!user) { setLoginOpen(true); return; }
     setBusy(true);
     try {
-      await jsonFetch("/api/instagram", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, employeeId: user.employeeId, name: user.name, postId, ...(action === "post" ? socialDraft : {}), ...(action === "comment" ? { content: commentDrafts[postId || ""] } : {}) }) });
+      await jsonFetch("/api/instagram", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, testMode: data.testMode, employeeId: user.employeeId, name: user.name, postId, ...(action === "post" ? socialDraft : {}), ...(action === "comment" ? { content: commentDrafts[postId || ""] } : {}) }) });
       if (action === "post") setSocialDraft({ caption: "", imageData: "", capturedAt: "" });
       if (action === "comment" && postId) setCommentDrafts((value) => ({ ...value, [postId]: "" }));
       setNotice(action === "post" ? "특별한 일상을 공유했습니다. 게시글 3점이 반영됩니다." : action === "comment" ? "댓글 2점이 반영됩니다." : "좋아요가 반영되었습니다.");
@@ -414,7 +419,7 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
           <span>화물맨 이벤트</span>
         </button>
         <div className="top-actions">
-          {data.preview && <span className="preview-badge">화면 미리보기</span>}
+          {(data.preview || data.testMode) && <span className="preview-badge">{data.testMode ? "기능 테스트" : "화면 미리보기"}</span>}
           {user && (
             <>
               <span className="user-chip">{user.name}님</span>

@@ -20,8 +20,15 @@ function instagramPreviewData(): PublicData {
   };
 }
 
-export default async function Page({ searchParams }: { searchParams: Promise<{ preview?: string }> }) {
-  if ((await searchParams).preview === "instagram") return <EventApp initialData={instagramPreviewData()} />;
+function instagramTestData(): PublicData {
+  const base = instagramPreviewData();
+  return { ...base, preview: false, testMode: true, event: { ...base.event, id: "instagram-test" }, settings: { ...base.settings, id: "instagram-test", eventName: "[테스트] 나도 인스타!", intro: "사진 게시·댓글·좋아요를 직접 점검해 보세요." }, employees: [], socialPosts: [] };
+}
+
+export default async function Page({ searchParams }: { searchParams: Promise<{ preview?: string; test?: string }> }) {
+  const params = await searchParams;
+  if (params.preview === "instagram" && params.test === "1") return <EventApp initialData={instagramTestData()} />;
+  if (params.preview === "instagram") return <EventApp initialData={instagramPreviewData()} />;
   const initialData = await getCachedPublicData() as PublicData;
   return <EventApp initialData={initialData} />;
 }

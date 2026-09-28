@@ -5,6 +5,7 @@ import { serialize, todaySeoul } from "@/lib/utils";
 
 export const LEGACY_EVENT_ID = "praise-legacy";
 export const INSTAGRAM_EVENT_ID = "instagram-2026-10";
+export const INSTAGRAM_TEST_EVENT_ID = "instagram-test";
 export type EventType = "praise" | "quiz" | "instagram";
 export type EventStatus = "draft" | "active" | "closed";
 
@@ -84,6 +85,26 @@ async function ensureInstagramEvent() {
     updatedAt: FieldValue.serverTimestamp(),
   });
   instagramPrizePreset.forEach((prize, index) => batch.set(eventCollection(INSTAGRAM_EVENT_ID, "prizes").doc(`prize-${index + 1}`), { ...prize, active: true, order: index + 1, eventId: INSTAGRAM_EVENT_ID }));
+  await batch.commit();
+}
+
+export async function ensureInstagramTestEvent() {
+  const adminDb = getAdminDb();
+  const ref = adminDb.collection("events").doc(INSTAGRAM_TEST_EVENT_ID);
+  if ((await ref.get()).exists) return;
+  const batch = adminDb.batch();
+  batch.set(ref, {
+    ...defaultSettings,
+    eventName: "[테스트] 나도 인스타!",
+    intro: "운영 전 사진 게시·댓글·좋아요를 직접 점검하는 테스트 이벤트입니다.",
+    startDate: "2026-09-01", endDate: "2026-12-31", type: "instagram", status: "draft", minChars: 5,
+    detailSchedule: "테스트 기간 동안 자유롭게 기능을 점검해 주세요.",
+    detailAttendance: "게시글 3점 · 댓글 2점 · 좋아요 1점으로 테스트 점수를 합산합니다.",
+    detailPrizes: "테스트 데이터이며 실제 상품 지급 대상이 아닙니다.",
+    detailNotes: "현재 진행 중인 이벤트와 완전히 분리된 테스트 공간입니다.",
+    createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
+  });
+  instagramPrizePreset.forEach((prize, index) => batch.set(eventCollection(INSTAGRAM_TEST_EVENT_ID, "prizes").doc(`prize-${index + 1}`), { ...prize, active: true, order: index + 1, eventId: INSTAGRAM_TEST_EVENT_ID }));
   await batch.commit();
 }
 
