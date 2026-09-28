@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { signInWithEmailAndPassword, signOut } from "firebase/auth";
 import Image from "next/image";
 import { getFirebaseAuth } from "@/lib/firebase-client";
@@ -40,6 +40,7 @@ type QuizSubmission = { id?: string; answer?: number; correct?: boolean };
 type StickerStatus = { attendance: number; sent: number; received: number; total: number };
 type PublishedResult = { rank: number; prizeName: string; amount: number; employeeId: string; winnerName: string; tickets: number; correctCount?: number; participationCount?: number };
 export type PublicData = {
+  preview?: boolean;
   event: { id: string; type: "praise" | "quiz" | "instagram"; status: string };
   quiz: Quiz | null;
   settings: Settings;
@@ -118,7 +119,7 @@ function PraiseCard({ praise, onOpen, showWriter }: { praise: Praise; onOpen: ()
 
 export default function EventApp({ initialData }: { initialData: PublicData }) {
   const [data, setData] = useState<PublicData>(initialData);
-  const [user, setUser] = useState<Employee | null>(null);
+  const [user, setUser] = useState<Employee | null>(initialData.preview ? { employeeId: "preview", name: "미리보기" } : null);
   const [login, setLogin] = useState({ name: "", employeeId: "" });
   const [loginOpen, setLoginOpen] = useState(false);
   const [stickerOpen, setStickerOpen] = useState(false);
@@ -149,7 +150,7 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
   const [socialDraft, setSocialDraft] = useState({ caption: "", imageData: "", capturedAt: "" });
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
 
-  const refresh = async () => setData(await jsonFetch<PublicData>("/api/public"));
+  const refresh = useCallback(async () => { if (!initialData.preview) setData(await jsonFetch<PublicData>("/api/public")); }, [initialData.preview]);
 
   useEffect(() => {
     // Revalidate after hydration so actions in another session are reflected.
@@ -160,7 +161,7 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
       setAdminLogin((value) => ({ ...value, email: savedAdminEmail }));
       setRememberAdminEmail(true);
     }
-  }, []);
+  }, [refresh]);
 
   useEffect(() => {
     if (!loginOpen && !stickerOpen && !loginResultOpen && !eventDetailOpen && !resultOpen && !selectedPraise && !quizResult) return;
@@ -221,6 +222,7 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
   };
 
   const submitSocialAction = async (action: "post" | "comment" | "like", postId?: string) => {
+    if (data.preview) { setNotice("미리보기에서는 실제 데이터가 저장되지 않습니다."); return; }
     if (!user) { setLoginOpen(true); return; }
     setBusy(true);
     try {
@@ -412,6 +414,7 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
           <span>화물맨 이벤트</span>
         </button>
         <div className="top-actions">
+          {data.preview && <span className="preview-badge">화면 미리보기</span>}
           {user && (
             <>
               <span className="user-chip">{user.name}님</span>
