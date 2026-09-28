@@ -145,6 +145,7 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
   const [rememberAdminEmail, setRememberAdminEmail] = useState(false);
   const [newEmployee, setNewEmployee] = useState({ name: "", employeeId: "", status: "재직" });
   const [busy, setBusy] = useState(false);
+  const [mobilePreview, setMobilePreview] = useState(false);
   const [quizAnswer, setQuizAnswer] = useState<number | null>(null);
   const [quizSubmission, setQuizSubmission] = useState<QuizSubmission | null>(null);
   const [quizResult, setQuizResult] = useState<{ correct: boolean; correctIndex: number; correctAnswer: string; facilitatorComment: string } | null>(null);
@@ -412,7 +413,7 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
   };
 
   return (
-    <main className={!adminOpen ? data.event.type === "quiz" ? "quiz-theme" : data.event.type === "instagram" ? "instagram-theme" : "" : ""}>
+    <main className={`${!adminOpen ? data.event.type === "quiz" ? "quiz-theme" : data.event.type === "instagram" ? "instagram-theme" : "" : ""} ${mobilePreview && !adminOpen ? "mobile-preview" : ""}`.trim()}>
       <header className="topbar">
         <button className="brand" onClick={() => setAdminOpen(false)} aria-label="메인 화면으로">
           <Image className="brand-logo" src="/hwamulman-logo.png" alt="화물맨" width={44} height={34} priority />
@@ -420,6 +421,7 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
         </button>
         <div className="top-actions">
           {(data.preview || data.testMode) && <span className="preview-badge">{data.testMode ? "기능 테스트" : "화면 미리보기"}</span>}
+          {data.event.type === "instagram" && !adminOpen && <button className="mobile-toggle" onClick={() => setMobilePreview((value) => !value)}>{mobilePreview ? "PC 화면" : "모바일 화면"}</button>}
           {user && (
             <>
               <span className="user-chip">{user.name}님</span>
