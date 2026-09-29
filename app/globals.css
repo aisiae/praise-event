@@ -36,3 +36,6 @@
 /* mobile hero overlap fix: shrink stickers into the top-right corner, keep the entry card below the hero */
 @media(max-width:590px){.hero-deco{right:8px;top:14px;transform:scale(.5);transform-origin:top right}.hero h1{margin-top:52px}.hero p,.hero h1{max-width:100%}.entry-strip,.instagram-entry-strip{margin-top:14px}}
 .mobile-preview .hero-deco{right:8px;top:14px;transform:scale(.5);transform-origin:top right}.mobile-preview .hero h1{margin-top:52px;max-width:100%}.mobile-preview .hero p{max-width:100%}.mobile-preview .entry-strip,.mobile-preview .instagram-entry-strip{margin-top:14px}
+/* mobile hero title: smaller, wrap by word */
+@media(max-width:590px){.hero h1{font-size:2.05rem;line-height:1.2;word-break:keep-all;margin-top:58px}.hero p{font-size:.95rem;word-break:keep-all}}
+.mobile-preview .hero h1{font-size:2.05rem;line-height:1.2;word-break:keep-all;margin-top:58px}.mobile-preview .hero p{font-size:.95rem;word-break:keep-all}
