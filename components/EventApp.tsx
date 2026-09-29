@@ -18,7 +18,7 @@ type Praise = {
   createdAt?: string;
 };
 type SocialComment = { id: string; employeeId: string; authorName: string; content: string; createdAt?: string };
-type SocialPost = { id: string; employeeId: string; authorName: string; caption: string; imageData: string; capturedAt: string; createdAt?: string; comments: SocialComment[]; likedBy: string[] };
+type SocialPost = { id: string; employeeId: string; authorName: string; caption: string; imageData?: string; imageUrl?: string; capturedAt: string; createdAt?: string; comments: SocialComment[]; likedBy: string[] };
 type Settings = {
   id?: string;
   type?: "praise" | "quiz" | "instagram";
@@ -48,6 +48,9 @@ export type PublicData = {
   employees: Employee[];
   praises: Praise[];
   socialPosts: SocialPost[];
+  socialHasMore?: boolean;
+  socialCursor?: string;
+  socialTotal?: number;
   prizes: Prize[];
   results: PublishedResult[];
   stats: { employeeCount: number; praiseCount: number; todayAttendance: number };
@@ -84,14 +87,14 @@ function formatDate(value?: string) {
 
 async function compressPhoto(file: File) {
   const bitmap = await createImageBitmap(file);
-  const max = 1280;
+  const max = 1024;
   const scale = Math.min(1, max / Math.max(bitmap.width, bitmap.height));
   const canvas = document.createElement("canvas");
   canvas.width = Math.round(bitmap.width * scale);
   canvas.height = Math.round(bitmap.height * scale);
   canvas.getContext("2d")?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
   bitmap.close();
-  return canvas.toDataURL("image/jpeg", .72);
+  return canvas.toDataURL("image/jpeg", .65);
 }
 
 function EventPeriod({ settings }: { settings: Settings }) {
@@ -159,7 +162,27 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, ownLikeKey]);
 
-  const refresh = useCallback(async () => { if (!initialData.preview) setData(await jsonFetch<PublicData>(initialData.testMode ? "/api/instagram?test=1" : "/api/public")); }, [initialData.preview, initialData.testMode]);
+  const refresh = useCallback(async () => {
+    if (initialData.preview) return;
+    const next = await jsonFetch<PublicData>(initialData.testMode ? "/api/instagram?test=1" : "/api/public");
+    setData((prev) => {
+      // keep older pages the user already opened via "더 보기"
+      const ids = new Set(next.socialPosts.map((post) => post.id));
+      const last = next.socialPosts[next.socialPosts.length - 1];
+      const older = last ? (prev.socialPosts || []).filter((post) => !post.id.startsWith("sample-") && !ids.has(post.id) && new Date(post.createdAt || 0) < new Date(last.createdAt || 0)) : [];
+      return older.length ? { ...next, socialPosts: [...next.socialPosts, ...older], socialHasMore: prev.socialHasMore, socialCursor: prev.socialCursor } : next;
+    });
+  }, [initialData.preview, initialData.testMode]);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const loadMorePosts = async () => {
+    if (loadingMore || !data.socialCursor) return;
+    setLoadingMore(true);
+    try {
+      const more = await jsonFetch<{ socialPosts: SocialPost[]; socialHasMore: boolean; socialCursor: string }>(`/api/instagram?feed=1${data.testMode ? "&test=1" : ""}&cursor=${encodeURIComponent(data.socialCursor)}`);
+      setData((prev) => ({ ...prev, socialPosts: [...prev.socialPosts, ...more.socialPosts.filter((post) => !prev.socialPosts.some((row) => row.id === post.id))], socialHasMore: more.socialHasMore, socialCursor: more.socialCursor }));
+    } catch (error) { setNotice(error instanceof Error ? error.message : "게시글을 더 불러오지 못했습니다."); }
+    finally { setLoadingMore(false); }
+  };
 
   useEffect(() => {
     // Revalidate after hydration so actions in another session are reflected.
@@ -705,17 +728,18 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
               </label>
               <div className="social-compose-fields"><label>촬영 일시<input type="datetime-local" value={socialDraft.capturedAt} onChange={(event) => setSocialDraft({ ...socialDraft, capturedAt: event.target.value })} required /></label><label>사진 이야기<textarea rows={3} maxLength={300} value={socialDraft.caption} onChange={(event) => setSocialDraft({ ...socialDraft, caption: event.target.value })} placeholder="이 순간이 특별한 이유를 들려주세요." required /></label><button className="button primary full" disabled={busy || !socialDraft.imageData || socialDraft.caption.trim().length < 5}>게시하고 3점 받기</button></div>
             </form>}
-            <section className="social-wall-head"><div><span className="section-label">PHOTO FEED</span><h2>우리의 특별한 일상</h2><p>동료의 순간에 좋아요와 댓글을 남겨 보세요.</p></div><strong>{data.socialPosts.length} posts</strong></section>
+            <section className="social-wall-head"><div><span className="section-label">PHOTO FEED</span><h2>우리의 특별한 일상</h2><p>동료의 순간에 좋아요와 댓글을 남겨 보세요.</p></div><strong>{data.socialTotal ?? data.socialPosts.length} posts</strong></section>
             <section className="social-feed">
               {data.socialPosts.length ? data.socialPosts.map((post) => { const liked = Boolean(user?.employeeId && post.likedBy.includes(user.employeeId)); const mine = Boolean(user?.employeeId && post.employeeId === user.employeeId); return <article className="social-card" key={post.id}>
                 <div className="social-author"><span>{post.authorName.slice(0, 1)}</span><div><strong>{post.authorName}</strong><small>{formatDate(post.createdAt)}</small></div></div>
-                <div className="social-photo"><Image unoptimized src={post.imageData} alt={`${post.authorName}님의 특별한 일상`} width={900} height={900} /><span>◷ {new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(post.capturedAt))}</span></div>
+                <div className="social-photo"><Image unoptimized src={post.imageUrl || post.imageData || ""} alt={`${post.authorName}님의 특별한 일상`} width={900} height={900} /><span>◷ {new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(post.capturedAt))}</span></div>
                 <div className="social-card-body"><div className="social-actions"><button type="button" className={liked ? "liked" : ""} disabled={mine} title={mine ? "내 게시글에는 좋아요를 누를 수 없습니다" : undefined} onClick={() => submitSocialAction("like", post.id)} aria-label="좋아요">{liked ? "♥" : "♡"} {post.likedBy.length}</button><span>댓글 {post.comments.length}</span></div>{mine && <p className="liked-by-list">♥ 좋아요한 사람: {likers[post.id]?.length ? likers[post.id].join(", ") : "아직 없어요"}</p>}<p><strong>{post.authorName}</strong> {post.caption}</p>
                   <div className="social-comments">{post.comments.map((comment) => <p key={comment.id}><strong>{comment.authorName}</strong> {comment.content}</p>)}</div>
                   {user ? <form onSubmit={(event) => { event.preventDefault(); submitSocialAction("comment", post.id); }}><input aria-label="댓글" maxLength={150} value={commentDrafts[post.id] || ""} onChange={(event) => setCommentDrafts({ ...commentDrafts, [post.id]: event.target.value })} placeholder="댓글을 남기고 2점 받기" /><button disabled={busy || !(commentDrafts[post.id] || "").trim()}>게시</button></form> : <button className="social-login-prompt" onClick={() => setLoginOpen(true)}>인증 후 좋아요와 댓글 남기기</button>}
                 </div>
               </article>; }) : <div className="empty-state"><span>📷</span><strong>아직 공유된 사진이 없어요</strong><p>첫 번째 특별한 일상을 올려 보세요.</p></div>}
             </section>
+            {data.socialHasMore && <button type="button" className="button secondary social-more" disabled={loadingMore} onClick={loadMorePosts}>{loadingMore ? "불러오는 중..." : "게시글 더 보기"}</button>}
           </> : <>
             <section className="entry-strip quiz-entry-strip">
               <div className="entry-message"><span className="entry-icon">Q</span><div><strong>{user ? `${user.name}님, 오늘의 문제가 도착했어요!` : "직원 인증 후 오늘의 퀴즈에 참여해 보세요"}</strong><span>하루 한 문제씩 출제됩니다. 내일도 문제를 맞혀 주세요!</span></div></div>

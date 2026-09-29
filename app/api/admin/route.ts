@@ -75,7 +75,7 @@ async function adminData(selectedId?: string) {
     selectedEvent.type === "praise" ? eventDocs(selectedEvent.id, "praises") : Promise.resolve([]), eventDocs(selectedEvent.id, "attendance"),
     selectedEvent.type === "quiz" ? eventDocs(selectedEvent.id, "quizzes") : Promise.resolve([]), selectedEvent.type === "quiz" ? eventDocs(selectedEvent.id, "responses") : Promise.resolve([]),
     eventCollection(selectedEvent.id, "meta").doc("currentResult").get(),
-    selectedEvent.type === "instagram" ? eventDocs(selectedEvent.id, "socialPosts") : Promise.resolve([]),
+    selectedEvent.type === "instagram" ? eventCollection(selectedEvent.id, "socialPosts").select("employeeId", "authorName", "caption", "capturedAt", "createdAt").get().then((snap) => snap.docs) : Promise.resolve([]),
     selectedEvent.type === "instagram" ? eventDocs(selectedEvent.id, "socialComments") : Promise.resolve([]),
     selectedEvent.type === "instagram" ? eventDocs(selectedEvent.id, "socialLikes") : Promise.resolve([]),
   ]);

@@ -38,3 +38,4 @@
 .mobile-preview .hero-deco{display:none}.mobile-preview .hero h1{font-size:2.3rem;line-height:1.2;word-break:keep-all;max-width:100%}.mobile-preview .hero p{max-width:100%;word-break:keep-all}.mobile-preview .entry-strip,.mobile-preview .instagram-entry-strip{margin-top:14px}
 .liked-by-list{margin:4px 0 8px;padding:8px 12px;border-radius:12px;background:#f7efff;color:#5a2d9c;font-size:.86rem;font-weight:600}
 .social-actions button:disabled{opacity:.55;cursor:not-allowed}
+.social-more{display:block;width:min(100%,320px);margin:18px auto 0}

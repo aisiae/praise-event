@@ -3,6 +3,7 @@ import { unstable_cache } from "next/cache";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { getActiveEvent, eventCollection, eventDocs, LEGACY_EVENT_ID, todayQuiz } from "@/lib/events";
 import { defaultSettings } from "@/lib/settings";
+import { getSocialFeed } from "@/lib/social";
 import { ensureSeptember2026Quizzes } from "@/lib/september-2026-quizzes";
 import { ACTIVE, serialize, todaySeoul } from "@/lib/utils";
 
@@ -31,7 +32,7 @@ export async function getPublicData() {
   const praiseCountQuery = settings.id === LEGACY_EVENT_ID
     ? adminDb.collection("praises").count()
     : eventCollection(settings.id, "praises").count();
-  const [employeesSnap, praisesSnap, praiseCountSnap, prizeDocs, eventResultSnap, legacyResultSnap, attendanceSnap, quiz, socialPostDocs, socialCommentDocs, socialLikeDocs] = await Promise.all([
+  const [employeesSnap, praisesSnap, praiseCountSnap, prizeDocs, eventResultSnap, legacyResultSnap, attendanceSnap, quiz, socialFeed] = await Promise.all([
     settings.type === "praise" || settings.type === "instagram" ? adminDb.collection("employees").where("status", "==", ACTIVE).get() : Promise.resolve(null),
     settings.type === "praise" ? praiseQuery.get() : Promise.resolve(null),
     settings.type === "praise" ? praiseCountQuery.get() : Promise.resolve(null),
@@ -40,9 +41,7 @@ export async function getPublicData() {
     settings.id === LEGACY_EVENT_ID ? adminDb.doc("config/currentResult").get() : Promise.resolve(null),
     attendanceQuery.get(),
     settings.type === "quiz" ? todayQuiz(settings.id) : Promise.resolve(null),
-    settings.type === "instagram" ? eventDocs(settings.id, "socialPosts") : Promise.resolve([]),
-    settings.type === "instagram" ? eventDocs(settings.id, "socialComments") : Promise.resolve([]),
-    settings.type === "instagram" ? eventDocs(settings.id, "socialLikes") : Promise.resolve([]),
+    settings.type === "instagram" ? getSocialFeed(settings.id) : Promise.resolve({ socialPosts: [], socialHasMore: false, socialCursor: "", socialTotal: 0 }),
   ]);
   const currentResultSnap = eventResultSnap.exists ? eventResultSnap : legacyResultSnap;
 
@@ -68,22 +67,6 @@ export async function getPublicData() {
   const results = settings.showResults && currentResultSnap?.exists
     ? (currentResultSnap.data()?.results || [])
     : [];
-  const socialComments = socialCommentDocs.map((doc) => ({ id: doc.id, ...doc.data() })) as any[];
-  const socialLikes = socialLikeDocs.map((doc) => ({ id: doc.id, ...doc.data() })) as any[];
-  const socialPosts = socialPostDocs.map((doc) => {
-    const row = doc.data();
-    return {
-      id: doc.id,
-      employeeId: row.employeeId,
-      authorName: row.authorName,
-      caption: row.caption,
-      imageData: row.imageData,
-      capturedAt: row.capturedAt,
-      createdAt: row.createdAt,
-      comments: socialComments.filter((comment) => comment.postId === doc.id),
-      likedBy: socialLikes.filter((like) => like.postId === doc.id).map((like) => like.employeeId),
-    };
-  }).sort((a: any, b: any) => b.createdAt?.toMillis?.() - a.createdAt?.toMillis?.());
 
   return serialize({
     settings,
@@ -91,7 +74,7 @@ export async function getPublicData() {
     quiz,
     employees,
     praises,
-    socialPosts,
+    ...socialFeed,
     prizes,
     results,
     stats: { employeeCount: employees.length, praiseCount: praiseCountSnap?.data().count || 0, todayAttendance: attendanceSnap.size },

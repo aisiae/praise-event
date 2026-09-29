@@ -4,6 +4,7 @@ import { revalidateTag } from "next/cache";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { ensureInstagramTestEvent, eventCollection, getActiveEvent, getEvent, INSTAGRAM_TEST_EVENT_ID } from "@/lib/events";
 import { instagramPrizePreset } from "@/lib/settings";
+import { getSocialFeed } from "@/lib/social";
 import { isEventOpen, normalizeEmployeeId, normalizeEmployeeName, serialize } from "@/lib/utils";
 
 async function verifyEmployee(employeeIdValue: unknown, nameValue: unknown) {
@@ -17,18 +18,20 @@ async function verifyEmployee(employeeIdValue: unknown, nameValue: unknown) {
 
 export async function GET(request: NextRequest) {
   try {
-    if (request.nextUrl.searchParams.get("test") !== "1") throw new Error("지원하지 않는 요청입니다.");
+    const params = request.nextUrl.searchParams;
+    const testMode = params.get("test") === "1";
+    if (params.get("feed") === "1") {
+      // Next page of the feed ("더 보기"). Works for the live event and the test room.
+      if (testMode) await ensureInstagramTestEvent();
+      const event = testMode ? await getEvent(INSTAGRAM_TEST_EVENT_ID) : await getActiveEvent();
+      if (!testMode && event.type !== "instagram") throw new Error("현재 나도 인스타 이벤트가 아닙니다.");
+      return NextResponse.json(serialize(await getSocialFeed(event.id, params.get("cursor") || undefined)));
+    }
+    if (!testMode) throw new Error("지원하지 않는 요청입니다.");
     await ensureInstagramTestEvent();
     const event = await getEvent(INSTAGRAM_TEST_EVENT_ID);
-    const [postSnap, commentSnap, likeSnap] = await Promise.all([
-      eventCollection(event.id, "socialPosts").orderBy("createdAt", "desc").get(),
-      eventCollection(event.id, "socialComments").get(),
-      eventCollection(event.id, "socialLikes").get(),
-    ]);
-    const comments = commentSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })) as any[];
-    const likes = likeSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })) as any[];
-    const socialPosts = postSnap.docs.map((doc) => ({ id: doc.id, ...doc.data(), comments: comments.filter((row) => row.postId === doc.id), likedBy: likes.filter((row) => row.postId === doc.id).map((row) => row.employeeId)}));
-    return NextResponse.json(serialize({ preview: false, testMode: true, event: { id: event.id, type: event.type, status: event.status }, settings: event, employees: [], praises: [], quiz: null, socialPosts, prizes: instagramPrizePreset.map((prize, index) => ({ id: String(index + 1), ...prize })), results: [], stats: { employeeCount: 0, praiseCount: 0, todayAttendance: 0 } }));
+    const socialFeed = await getSocialFeed(event.id);
+    return NextResponse.json(serialize({ preview: false, testMode: true, event: { id: event.id, type: event.type, status: event.status }, settings: event, employees: [], praises: [], quiz: null, ...socialFeed, prizes: instagramPrizePreset.map((prize, index) => ({ id: String(index + 1), ...prize })), results: [], stats: { employeeCount: 0, praiseCount: 0, todayAttendance: 0 } }));
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "테스트 데이터를 불러오지 못했습니다." }, { status: 400 });
   }
