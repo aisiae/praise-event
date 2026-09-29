@@ -230,6 +230,17 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
   const submitSocialAction = async (action: "post" | "comment" | "like", postId?: string) => {
     if (data.preview) { setNotice("미리보기에서는 실제 데이터가 저장되지 않습니다."); return; }
     if (!user) { setLoginOpen(true); return; }
+    if (action === "like" && postId) {
+      const myId = String(user.employeeId); const toggleLike = (rows: SocialPost[]) => rows.map((post) => post.id !== postId ? post : { ...post, likedBy: post.likedBy.includes(myId) ? post.likedBy.filter((id) => id !== myId) : [...post.likedBy, myId] });
+      setData((current) => ({ ...current, socialPosts: toggleLike(current.socialPosts) }));
+      try {
+        await jsonFetch("/api/instagram", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, testMode: data.testMode, employeeId: user.employeeId, name: user.name, postId }) });
+      } catch (error) {
+        setData((current) => ({ ...current, socialPosts: toggleLike(current.socialPosts) }));
+        setNotice(error instanceof Error ? error.message : "요청을 처리하지 못했습니다.");
+      }
+      return;
+    }
     setBusy(true);
     try {
       await jsonFetch("/api/instagram", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, testMode: data.testMode, employeeId: user.employeeId, name: user.name, postId, ...(action === "post" ? socialDraft : {}), ...(action === "comment" ? { content: commentDrafts[postId || ""] } : {}) }) });
@@ -692,7 +703,7 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
               {data.socialPosts.length ? data.socialPosts.map((post) => { const liked = Boolean(user?.employeeId && post.likedBy.includes(user.employeeId)); return <article className="social-card" key={post.id}>
                 <div className="social-author"><span>{post.authorName.slice(0, 1)}</span><div><strong>{post.authorName}</strong><small>{formatDate(post.createdAt)}</small></div></div>
                 <div className="social-photo"><Image unoptimized src={post.imageData} alt={`${post.authorName}님의 특별한 일상`} width={900} height={900} /><span>◷ {new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(post.capturedAt))}</span></div>
-                <div className="social-card-body"><div className="social-actions"><button type="button" className={liked ? "liked" : ""} disabled={busy} onClick={() => submitSocialAction("like", post.id)} aria-label="좋아요">{liked ? "♥" : "♡"} {post.likedBy.length}</button><span>댓글 {post.comments.length}</span></div><p><strong>{post.authorName}</strong> {post.caption}</p>
+                <div className="social-card-body"><div className="social-actions"><button type="button" className={liked ? "liked" : ""} onClick={() => submitSocialAction("like", post.id)} aria-label="좋아요">{liked ? "♥" : "♡"} {post.likedBy.length}</button><span>댓글 {post.comments.length}</span></div><p><strong>{post.authorName}</strong> {post.caption}</p>
                   <div className="social-comments">{post.comments.map((comment) => <p key={comment.id}><strong>{comment.authorName}</strong> {comment.content}</p>)}</div>
                   {user ? <form onSubmit={(event) => { event.preventDefault(); submitSocialAction("comment", post.id); }}><input aria-label="댓글" maxLength={150} value={commentDrafts[post.id] || ""} onChange={(event) => setCommentDrafts({ ...commentDrafts, [post.id]: event.target.value })} placeholder="댓글을 남기고 2점 받기" /><button disabled={busy || !(commentDrafts[post.id] || "").trim()}>게시</button></form> : <button className="social-login-prompt" onClick={() => setLoginOpen(true)}>인증 후 좋아요와 댓글 남기기</button>}
                 </div>
