@@ -40,12 +40,19 @@ function instagramStandings(employeeDocs: FirebaseFirestore.QueryDocumentSnapsho
   const posts = counts(postDocs, "employeeId");
   const comments = counts(commentDocs, "employeeId");
   const likes = counts(likeDocs, "employeeId");
-  const postOwners = new Map(postDocs.map((doc) => [doc.id, String(doc.data().employeeId || "")]));
-  const popularity = new Map<string, number>();
-  likeDocs.forEach((doc) => { const owner = postOwners.get(String(doc.data().postId || "")); if (owner) popularity.set(owner, (popularity.get(owner) || 0) + 1); });
+  // Popular post = the single post with the most reactions (likes + comments written by others); its author is the candidate.
+  const postReactions = new Map(postDocs.map((doc) => [doc.id, { owner: String(doc.data().employeeId || ""), likes: 0, comments: 0 }]));
+  likeDocs.forEach((doc) => { const post = postReactions.get(String(doc.data().postId || "")); if (post) post.likes += 1; });
+  commentDocs.forEach((doc) => { const row = doc.data(); const post = postReactions.get(String(row.postId || "")); if (post && String(row.employeeId || "") !== post.owner) post.comments += 1; });
+  const bestPost = new Map<string, { score: number; likes: number; comments: number }>();
+  postReactions.forEach((post) => {
+    const score = post.likes + post.comments;
+    const current = bestPost.get(post.owner);
+    if (!current || score > current.score || (score === current.score && post.likes > current.likes)) bestPost.set(post.owner, { score, likes: post.likes, comments: post.comments });
+  });
   return employeeDocs.filter((doc) => !["휴직", "퇴직"].includes(String(doc.data().status))).map((doc) => ({
     employeeId: doc.id, name: doc.data().name, attendance: posts.get(doc.id) || 0, sent: comments.get(doc.id) || 0, received: likes.get(doc.id) || 0,
-    tickets: (posts.get(doc.id) || 0) * 3 + (comments.get(doc.id) || 0) * 2 + (likes.get(doc.id) || 0), popularity: popularity.get(doc.id) || 0,
+    tickets: (posts.get(doc.id) || 0) * 3 + (comments.get(doc.id) || 0) * 2 + (likes.get(doc.id) || 0), popularity: bestPost.get(doc.id)?.score || 0, popularLikes: bestPost.get(doc.id)?.likes || 0, popularComments: bestPost.get(doc.id)?.comments || 0,
   }));
 }
 
@@ -241,7 +248,7 @@ export async function POST(request: NextRequest) {
         ? shuffleQuizTies(current.standings.filter((row: any) => row.participationCount > 0))
         : current.standings;
       const popularCandidates = current.settings.type === "instagram"
-        ? [...current.standings].filter((row: any) => row.attendance > 0).sort((a: any, b: any) => b.popularity - a.popularity || b.tickets - a.tickets || a.name.localeCompare(b.name, "ko"))
+        ? [...current.standings].filter((row: any) => row.attendance > 0 && row.popularity > 0).sort((a: any, b: any) => b.popularity - a.popularity || b.tickets - a.tickets || a.name.localeCompare(b.name, "ko"))
         : [];
       let regularIndex = 0;
       let popularIndex = 0;
@@ -251,6 +258,7 @@ export async function POST(request: NextRequest) {
         return {
           rank: index + 1, prizeName: prize.name, amount: prize.amount,
           employeeId: winner?.employeeId || "", winnerName: winner?.name || "", tickets: winner?.tickets || 0,
+          ...(isPopular ? { popularLikes: winner?.popularLikes || 0, popularComments: winner?.popularComments || 0 } : {}),
           ...(current.settings.type === "quiz" ? { correctCount: winner?.correctCount || 0, participationCount: winner?.participationCount || 0 } : {}),
         };
       });
