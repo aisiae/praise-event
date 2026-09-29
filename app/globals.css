@@ -45,3 +45,6 @@
 /* mobile instagram hero: bolder dark text */
 @media(max-width:590px){.instagram-theme .hero h1{font-weight:800}.instagram-theme .hero p{font-weight:600}.instagram-theme .hero .eyebrow{font-weight:800}}
 .mobile-preview.instagram-theme .hero h1{font-weight:800}.mobile-preview.instagram-theme .hero p{font-weight:600}.mobile-preview.instagram-theme .hero .eyebrow{font-weight:800}
+/* mobile instagram hero: heavy title font, keep stickers clear of the title */
+@media(max-width:590px){.instagram-theme .hero h1{font-family:"Noto Sans KR","Malgun Gothic",sans-serif;font-weight:800;letter-spacing:-.04em;margin-top:84px}.instagram-theme .hero-deco{transform:scale(.45)}}
+.mobile-preview.instagram-theme .hero h1{font-family:"Noto Sans KR","Malgun Gothic",sans-serif;font-weight:800;letter-spacing:-.04em;margin-top:84px}.mobile-preview.instagram-theme .hero-deco{transform:scale(.45)}
