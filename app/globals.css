@@ -39,3 +39,6 @@
 /* mobile hero title: smaller, wrap by word */
 @media(max-width:590px){.hero h1{font-size:2.05rem;line-height:1.2;word-break:keep-all;margin-top:58px}.hero p{font-size:.95rem;word-break:keep-all}}
 .mobile-preview .hero h1{font-size:2.05rem;line-height:1.2;word-break:keep-all;margin-top:58px}.mobile-preview .hero p{font-size:.95rem;word-break:keep-all}
+/* mobile instagram hero: dark text instead of white */
+@media(max-width:590px){.instagram-theme .hero h1,.instagram-theme .hero p,.instagram-theme .hero .eyebrow{color:#2a1050}}
+.mobile-preview.instagram-theme .hero h1,.mobile-preview.instagram-theme .hero p,.mobile-preview.instagram-theme .hero .eyebrow,.instagram-theme .mobile-preview .hero h1,.instagram-theme .mobile-preview .hero p,.instagram-theme .mobile-preview .hero .eyebrow{color:#2a1050}
