@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
     ]);
     const comments = commentSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })) as any[];
     const likes = likeSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })) as any[];
-    const socialPosts = postSnap.docs.map((doc) => ({ id: doc.id, ...doc.data(), comments: comments.filter((row) => row.postId === doc.id), likedBy: likes.filter((row) => row.postId === doc.id).map((row) => row.employeeId) }));
+    const socialPosts = postSnap.docs.map((doc) => ({ id: doc.id, ...doc.data(), comments: comments.filter((row) => row.postId === doc.id), likedBy: likes.filter((row) => row.postId === doc.id).map((row) => row.employeeId), likedNames: likes.filter((row) => row.postId === doc.id).map((row) => String(row.name || row.employeeId)) }));
     return NextResponse.json(serialize({ preview: false, testMode: true, event: { id: event.id, type: event.type, status: event.status }, settings: event, employees: [], praises: [], quiz: null, socialPosts, prizes: instagramPrizePreset.map((prize, index) => ({ id: String(index + 1), ...prize })), results: [], stats: { employeeCount: 0, praiseCount: 0, todayAttendance: 0 } }));
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "테스트 데이터를 불러오지 못했습니다." }, { status: 400 });
@@ -65,7 +65,9 @@ export async function POST(request: NextRequest) {
       await comments.add({ postId, ...employee, authorName: employee.name, content, createdAt: FieldValue.serverTimestamp() });
     } else if (action === "like") {
       const postId = String(body.postId || "");
-      if (!(await posts.doc(postId).get()).exists) throw new Error("게시글을 찾을 수 없습니다.");
+      const likedPost = await posts.doc(postId).get();
+      if (!likedPost.exists) throw new Error("게시글을 찾을 수 없습니다.");
+      if (likedPost.data()?.employeeId === employee.employeeId) throw new Error("내 게시글에는 좋아요를 누를 수 없습니다.");
       const ref = likes.doc(`${postId}_${employee.employeeId}`);
       const snap = await ref.get();
       if (snap.exists) await ref.delete();

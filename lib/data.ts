@@ -82,6 +82,7 @@ export async function getPublicData() {
       createdAt: row.createdAt,
       comments: socialComments.filter((comment) => comment.postId === doc.id),
       likedBy: socialLikes.filter((like) => like.postId === doc.id).map((like) => like.employeeId),
+      likedNames: socialLikes.filter((like) => like.postId === doc.id).map((like) => String(like.name || like.employeeId)),
     };
   }).sort((a: any, b: any) => b.createdAt?.toMillis?.() - a.createdAt?.toMillis?.());
 
