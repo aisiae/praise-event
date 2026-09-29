@@ -42,3 +42,6 @@
 /* mobile instagram hero: dark text instead of white */
 @media(max-width:590px){.instagram-theme .hero h1,.instagram-theme .hero p,.instagram-theme .hero .eyebrow{color:#2a1050}}
 .mobile-preview.instagram-theme .hero h1,.mobile-preview.instagram-theme .hero p,.mobile-preview.instagram-theme .hero .eyebrow,.instagram-theme .mobile-preview .hero h1,.instagram-theme .mobile-preview .hero p,.instagram-theme .mobile-preview .hero .eyebrow{color:#2a1050}
+/* mobile instagram hero: bolder dark text */
+@media(max-width:590px){.instagram-theme .hero h1{font-weight:800}.instagram-theme .hero p{font-weight:600}.instagram-theme .hero .eyebrow{font-weight:800}}
+.mobile-preview.instagram-theme .hero h1{font-weight:800}.mobile-preview.instagram-theme .hero p{font-weight:600}.mobile-preview.instagram-theme .hero .eyebrow{font-weight:800}
