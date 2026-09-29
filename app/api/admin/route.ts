@@ -40,13 +40,13 @@ function instagramStandings(employeeDocs: FirebaseFirestore.QueryDocumentSnapsho
   const posts = counts(postDocs, "employeeId");
   const comments = counts(commentDocs, "employeeId");
   const likes = counts(likeDocs, "employeeId");
-  // Popular post = the single post with the most reactions (likes + comments written by others); its author is the candidate.
+  // Popular post = the single post with the highest score (likes x1 + comments by others x2, same weights as activity points); its author is the candidate.
   const postReactions = new Map(postDocs.map((doc) => [doc.id, { owner: String(doc.data().employeeId || ""), likes: 0, comments: 0 }]));
   likeDocs.forEach((doc) => { const post = postReactions.get(String(doc.data().postId || "")); if (post) post.likes += 1; });
   commentDocs.forEach((doc) => { const row = doc.data(); const post = postReactions.get(String(row.postId || "")); if (post && String(row.employeeId || "") !== post.owner) post.comments += 1; });
   const bestPost = new Map<string, { score: number; likes: number; comments: number }>();
   postReactions.forEach((post) => {
-    const score = post.likes + post.comments;
+    const score = post.likes + post.comments * 2;
     const current = bestPost.get(post.owner);
     if (!current || score > current.score || (score === current.score && post.likes > current.likes)) bestPost.set(post.owner, { score, likes: post.likes, comments: post.comments });
   });
@@ -258,7 +258,7 @@ export async function POST(request: NextRequest) {
         return {
           rank: index + 1, prizeName: prize.name, amount: prize.amount,
           employeeId: winner?.employeeId || "", winnerName: winner?.name || "", tickets: winner?.tickets || 0,
-          ...(isPopular ? { popularLikes: winner?.popularLikes || 0, popularComments: winner?.popularComments || 0 } : {}),
+          ...(isPopular ? { popularScore: winner?.popularity || 0, popularLikes: winner?.popularLikes || 0, popularComments: winner?.popularComments || 0 } : {}),
           ...(current.settings.type === "quiz" ? { correctCount: winner?.correctCount || 0, participationCount: winner?.participationCount || 0 } : {}),
         };
       });
