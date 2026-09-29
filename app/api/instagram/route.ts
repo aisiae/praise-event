@@ -28,9 +28,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(serialize(await getSocialFeed(event.id, params.get("cursor") || undefined)));
     }
     if (!testMode) throw new Error("지원하지 않는 요청입니다.");
-    await ensureInstagramTestEvent();
-    const event = await getEvent(INSTAGRAM_TEST_EVENT_ID);
-    const socialFeed = await getSocialFeed(event.id);
+    // independent Firestore reads run in parallel to keep the number of sequential round trips low
+    const [event, socialFeed] = await Promise.all([
+      ensureInstagramTestEvent().then(() => getEvent(INSTAGRAM_TEST_EVENT_ID)),
+      getSocialFeed(INSTAGRAM_TEST_EVENT_ID),
+    ]);
     return NextResponse.json(serialize({ preview: false, testMode: true, event: { id: event.id, type: event.type, status: event.status }, settings: event, employees: [], praises: [], quiz: null, ...socialFeed, prizes: instagramPrizePreset.map((prize, index) => ({ id: String(index + 1), ...prize })), results: [], stats: { employeeCount: 0, praiseCount: 0, todayAttendance: 0 } }));
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "테스트 데이터를 불러오지 못했습니다." }, { status: 400 });
@@ -40,10 +42,11 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const employee = await verifyEmployee(body.employeeId, body.name);
     const testMode = body.testMode === true;
-    if (testMode) await ensureInstagramTestEvent();
-    const event = testMode ? await getEvent(INSTAGRAM_TEST_EVENT_ID) : await getActiveEvent();
+    const [employee, event] = await Promise.all([
+      verifyEmployee(body.employeeId, body.name),
+      testMode ? ensureInstagramTestEvent().then(() => getEvent(INSTAGRAM_TEST_EVENT_ID)) : getActiveEvent(),
+    ]);
     if (!testMode && (event.type !== "instagram" || !isEventOpen(event))) throw new Error("현재 나도 인스타 이벤트 참여 기간이 아닙니다.");
     const posts = eventCollection(event.id, "socialPosts");
     const comments = eventCollection(event.id, "socialComments");
