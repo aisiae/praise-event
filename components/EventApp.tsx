@@ -18,7 +18,7 @@ type Praise = {
   createdAt?: string;
 };
 type SocialComment = { id: string; employeeId: string; authorName: string; content: string; createdAt?: string };
-type SocialPost = { id: string; employeeId: string; authorName: string; caption: string; imageData: string; capturedAt: string; createdAt?: string; comments: SocialComment[]; likedBy: string[]; likedNames?: string[] };
+type SocialPost = { id: string; employeeId: string; authorName: string; caption: string; imageData: string; capturedAt: string; createdAt?: string; comments: SocialComment[]; likedBy: string[] };
 type Settings = {
   id?: string;
   type?: "praise" | "quiz" | "instagram";
@@ -151,6 +151,13 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
   const [quizResult, setQuizResult] = useState<{ correct: boolean; correctIndex: number; correctAnswer: string; facilitatorComment: string } | null>(null);
   const [socialDraft, setSocialDraft] = useState({ caption: "", imageData: "", capturedAt: "" });
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
+  const [likers, setLikers] = useState<Record<string, string[]>>({});
+  const ownLikeKey = data.socialPosts ? data.socialPosts.filter((post) => post.employeeId === user?.employeeId).map((post) => `${post.id}:${post.likedBy.length}`).join(",") : "";
+  useEffect(() => {
+    if (!user || data.preview || !ownLikeKey) return;
+    jsonFetch<{ likers: Record<string, string[]> }>("/api/instagram", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "myLikers", testMode: data.testMode, employeeId: user.employeeId, name: user.name }) }).then((result) => setLikers(result.likers)).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, ownLikeKey]);
 
   const refresh = useCallback(async () => { if (!initialData.preview) setData(await jsonFetch<PublicData>(initialData.testMode ? "/api/instagram?test=1" : "/api/public")); }, [initialData.preview, initialData.testMode]);
 
@@ -703,7 +710,7 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
               {data.socialPosts.length ? data.socialPosts.map((post) => { const liked = Boolean(user?.employeeId && post.likedBy.includes(user.employeeId)); const mine = Boolean(user?.employeeId && post.employeeId === user.employeeId); return <article className="social-card" key={post.id}>
                 <div className="social-author"><span>{post.authorName.slice(0, 1)}</span><div><strong>{post.authorName}</strong><small>{formatDate(post.createdAt)}</small></div></div>
                 <div className="social-photo"><Image unoptimized src={post.imageData} alt={`${post.authorName}님의 특별한 일상`} width={900} height={900} /><span>◷ {new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(post.capturedAt))}</span></div>
-                <div className="social-card-body"><div className="social-actions"><button type="button" className={liked ? "liked" : ""} disabled={mine} title={mine ? "내 게시글에는 좋아요를 누를 수 없습니다" : undefined} onClick={() => submitSocialAction("like", post.id)} aria-label="좋아요">{liked ? "♥" : "♡"} {post.likedBy.length}</button><span>댓글 {post.comments.length}</span></div>{mine && <p className="liked-by-list">♥ 좋아요한 사람: {post.likedNames?.length ? post.likedNames.join(", ") : "아직 없어요"}</p>}<p><strong>{post.authorName}</strong> {post.caption}</p>
+                <div className="social-card-body"><div className="social-actions"><button type="button" className={liked ? "liked" : ""} disabled={mine} title={mine ? "내 게시글에는 좋아요를 누를 수 없습니다" : undefined} onClick={() => submitSocialAction("like", post.id)} aria-label="좋아요">{liked ? "♥" : "♡"} {post.likedBy.length}</button><span>댓글 {post.comments.length}</span></div>{mine && <p className="liked-by-list">♥ 좋아요한 사람: {likers[post.id]?.length ? likers[post.id].join(", ") : "아직 없어요"}</p>}<p><strong>{post.authorName}</strong> {post.caption}</p>
                   <div className="social-comments">{post.comments.map((comment) => <p key={comment.id}><strong>{comment.authorName}</strong> {comment.content}</p>)}</div>
                   {user ? <form onSubmit={(event) => { event.preventDefault(); submitSocialAction("comment", post.id); }}><input aria-label="댓글" maxLength={150} value={commentDrafts[post.id] || ""} onChange={(event) => setCommentDrafts({ ...commentDrafts, [post.id]: event.target.value })} placeholder="댓글을 남기고 2점 받기" /><button disabled={busy || !(commentDrafts[post.id] || "").trim()}>게시</button></form> : <button className="social-login-prompt" onClick={() => setLoginOpen(true)}>인증 후 좋아요와 댓글 남기기</button>}
                 </div>

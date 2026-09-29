@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
     ]);
     const comments = commentSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })) as any[];
     const likes = likeSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })) as any[];
-    const socialPosts = postSnap.docs.map((doc) => ({ id: doc.id, ...doc.data(), comments: comments.filter((row) => row.postId === doc.id), likedBy: likes.filter((row) => row.postId === doc.id).map((row) => row.employeeId), likedNames: likes.filter((row) => row.postId === doc.id).map((row) => String(row.name || row.employeeId)) }));
+    const socialPosts = postSnap.docs.map((doc) => ({ id: doc.id, ...doc.data(), comments: comments.filter((row) => row.postId === doc.id), likedBy: likes.filter((row) => row.postId === doc.id).map((row) => row.employeeId)}));
     return NextResponse.json(serialize({ preview: false, testMode: true, event: { id: event.id, type: event.type, status: event.status }, settings: event, employees: [], praises: [], quiz: null, socialPosts, prizes: instagramPrizePreset.map((prize, index) => ({ id: String(index + 1), ...prize })), results: [], stats: { employeeCount: 0, praiseCount: 0, todayAttendance: 0 } }));
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "테스트 데이터를 불러오지 못했습니다." }, { status: 400 });
@@ -72,6 +72,15 @@ export async function POST(request: NextRequest) {
       const snap = await ref.get();
       if (snap.exists) await ref.delete();
       else await ref.set({ postId, ...employee, createdAt: FieldValue.serverTimestamp() });
+    } else if (action === "myLikers") {
+      const mine = await posts.where("employeeId", "==", employee.employeeId).get();
+      const mineIds = new Set(mine.docs.map((doc) => doc.id));
+      const likers: Record<string, string[]> = {};
+      (await likes.get()).docs.forEach((doc) => {
+        const row = doc.data();
+        if (mineIds.has(row.postId)) (likers[row.postId] ||= []).push(String(row.name || row.employeeId));
+      });
+      return NextResponse.json({ likers });
     } else {
       throw new Error("지원하지 않는 작업입니다.");
     }
