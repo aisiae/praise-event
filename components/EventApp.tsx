@@ -717,7 +717,7 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
           )}
           </> : data.event.type === "instagram" ? <>
             <section className="entry-strip instagram-entry-strip">
-              <div className="entry-message"><span className="entry-icon">▣</span><div><strong>{user ? `${user.name}님, 오늘의 특별한 순간은 무엇인가요?` : "직원 인증 후 특별한 일상을 공유해 보세요"}</strong><span>게시글 3점 · 댓글 2점 · 좋아요 1점</span></div></div>
+              <div className="entry-message"><span className="entry-icon">▣</span><div><strong>{user ? `${user.name}님, 오늘의 특별한 순간은 무엇인가요?` : "직원 인증 후 특별한 일상을 공유해 보세요"}</strong><span>게시글 3점(하루 1개) · 댓글 2점 · 좋아요 1점</span></div></div>
               {!user && <button className="button entry-button" onClick={() => setLoginOpen(true)}>직원 인증하고 참여하기 <span>→</span></button>}
             </section>
             {user && <form className="social-compose panel" onSubmit={(event) => { event.preventDefault(); submitSocialAction("post"); }}>

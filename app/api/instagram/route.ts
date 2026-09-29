@@ -5,7 +5,7 @@ import { getAdminDb } from "@/lib/firebase-admin";
 import { ensureInstagramTestEvent, eventCollection, getActiveEvent, getEvent, INSTAGRAM_TEST_EVENT_ID } from "@/lib/events";
 import { instagramPrizePreset } from "@/lib/settings";
 import { getSocialFeed } from "@/lib/social";
-import { isEventOpen, normalizeEmployeeId, normalizeEmployeeName, serialize } from "@/lib/utils";
+import { isEventOpen, normalizeEmployeeId, normalizeEmployeeName, serialize, todaySeoul } from "@/lib/utils";
 
 async function verifyEmployee(employeeIdValue: unknown, nameValue: unknown) {
   const employeeId = normalizeEmployeeId(employeeIdValue);
@@ -59,7 +59,17 @@ export async function POST(request: NextRequest) {
       if (caption.length < 5 || caption.length > 300) throw new Error("게시글은 5자 이상 300자 이하로 작성해 주세요.");
       if (!/^data:image\/(jpeg|webp);base64,/.test(imageData) || imageData.length > 750000) throw new Error("사진 형식 또는 용량을 확인해 주세요.");
       if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(capturedAt)) throw new Error("사진 촬영 일시를 입력해 주세요.");
-      await posts.add({ ...employee, authorName: employee.name, caption, imageData, capturedAt, createdAt: FieldValue.serverTimestamp() });
+      const data = { ...employee, authorName: employee.name, caption, imageData, capturedAt, createdAt: FieldValue.serverTimestamp() };
+      if (testMode) await posts.add(data);
+      else {
+        // One post per employee per day (Seoul time): the doc id is unique per day, so create() fails if it already exists (also blocks double taps).
+        const dayKey = `${todaySeoul()}_${employee.employeeId}`.replace(/[^A-Za-z0-9_-]/g, "_");
+        try { await posts.doc(dayKey).create(data); }
+        catch (error) {
+          if ((error as { code?: number }).code === 6) throw new Error("게시글은 하루에 1개만 올릴 수 있습니다. 내일 다시 올려 주세요.");
+          throw error;
+        }
+      }
     } else if (action === "comment") {
       const postId = String(body.postId || "");
       const content = String(body.content || "").trim();
