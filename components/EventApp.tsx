@@ -136,6 +136,8 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
   const [receivedPraises, setReceivedPraises] = useState<Praise[]>([]);
   const [sentPraises, setSentPraises] = useState<Praise[]>([]);
   const [selectedPraise, setSelectedPraise] = useState<Praise | null>(null);
+  const [openPostId, setOpenPostId] = useState<string | null>(null);
+  const openPost = openPostId ? data.socialPosts.find((post) => post.id === openPostId) || null : null;
   const [editPraiseContent, setEditPraiseContent] = useState("");
   const [editingPraise, setEditingPraise] = useState(false);
   const [adminTab, setAdminTab] = useState<"employees" | "settings" | "quizzes" | "prizes" | "posts" | "status" | "results">("settings");
@@ -196,7 +198,7 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
   }, [refresh]);
 
   useEffect(() => {
-    if (!loginOpen && !stickerOpen && !loginResultOpen && !eventDetailOpen && !resultOpen && !selectedPraise && !quizResult) return;
+    if (!loginOpen && !stickerOpen && !loginResultOpen && !eventDetailOpen && !resultOpen && !selectedPraise && !quizResult && !openPost) return;
     const close = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setLoginOpen(false);
@@ -205,12 +207,13 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
         setEventDetailOpen(false);
         setResultOpen(false);
         setSelectedPraise(null);
+        setOpenPostId(null);
         setQuizResult(null);
       }
     };
     window.addEventListener("keydown", close);
     return () => window.removeEventListener("keydown", close);
-  }, [loginOpen, stickerOpen, loginResultOpen, eventDetailOpen, resultOpen, selectedPraise, quizResult]);
+  }, [loginOpen, stickerOpen, loginResultOpen, eventDetailOpen, resultOpen, selectedPraise, quizResult, openPost]);
 
   const filteredPraises = useMemo(() => {
     if (!user || praiseTab === "all") return data.praises;
@@ -256,6 +259,15 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
       setBusy(false);
     }
   };
+
+  const socialCard = (post: SocialPost) => { const liked = Boolean(user?.employeeId && post.likedBy.includes(user.employeeId)); const mine = Boolean(user?.employeeId && post.employeeId === user.employeeId); return <article className="social-card" key={post.id}>
+                <div className="social-author"><span>{post.authorName.slice(0, 1)}</span><div><strong>{post.authorName}</strong><small>{formatDate(post.createdAt)}</small></div></div>
+                <div className="social-photo"><Image unoptimized src={post.imageUrl || post.imageData || ""} alt={`${post.authorName}님의 특별한 일상`} width={900} height={900} /><span>◷ {new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(post.capturedAt))}</span></div>
+                <div className="social-card-body"><div className="social-actions"><button type="button" className={liked ? "liked" : ""} disabled={mine} title={mine ? "내 게시글에는 좋아요를 누를 수 없습니다" : undefined} onClick={() => submitSocialAction("like", post.id)} aria-label="좋아요">{liked ? "♥" : "♡"} {post.likedBy.length}</button><span>댓글 {post.comments.length}</span></div>{mine && <p className="liked-by-list">♥ 좋아요한 사람: {likers[post.id]?.length ? likers[post.id].join(", ") : "아직 없어요"}</p>}<p><strong>{post.authorName}</strong> {post.caption}</p>
+                  <div className="social-comments">{post.comments.map((comment) => <p key={comment.id}><strong>{comment.authorName}</strong> {comment.content}</p>)}</div>
+                  {user ? <form onSubmit={(event) => { event.preventDefault(); submitSocialAction("comment", post.id); }}><input aria-label="댓글" maxLength={150} value={commentDrafts[post.id] || ""} onChange={(event) => setCommentDrafts({ ...commentDrafts, [post.id]: event.target.value })} placeholder="댓글을 남기고 2점 받기" /><button disabled={busy || !(commentDrafts[post.id] || "").trim()}>게시</button></form> : <button className="social-login-prompt" onClick={() => setLoginOpen(true)}>인증 후 좋아요와 댓글 남기기</button>}
+                </div>
+              </article>; };
 
   const submitSocialAction = async (action: "post" | "comment" | "like", postId?: string) => {
     if (data.preview) { setNotice("미리보기에서는 실제 데이터가 저장되지 않습니다."); return; }
@@ -730,14 +742,7 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
             </form>}
             <section className="social-wall-head"><div><span className="section-label">PHOTO FEED</span><h2>우리의 특별한 일상</h2><p>동료의 순간에 좋아요와 댓글을 남겨 보세요.</p></div><strong>{data.socialTotal ?? data.socialPosts.length} posts</strong></section>
             <section className="social-feed">
-              {data.socialPosts.length ? data.socialPosts.map((post) => { const liked = Boolean(user?.employeeId && post.likedBy.includes(user.employeeId)); const mine = Boolean(user?.employeeId && post.employeeId === user.employeeId); return <article className="social-card" key={post.id}>
-                <div className="social-author"><span>{post.authorName.slice(0, 1)}</span><div><strong>{post.authorName}</strong><small>{formatDate(post.createdAt)}</small></div></div>
-                <div className="social-photo"><Image unoptimized src={post.imageUrl || post.imageData || ""} alt={`${post.authorName}님의 특별한 일상`} width={900} height={900} /><span>◷ {new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(post.capturedAt))}</span></div>
-                <div className="social-card-body"><div className="social-actions"><button type="button" className={liked ? "liked" : ""} disabled={mine} title={mine ? "내 게시글에는 좋아요를 누를 수 없습니다" : undefined} onClick={() => submitSocialAction("like", post.id)} aria-label="좋아요">{liked ? "♥" : "♡"} {post.likedBy.length}</button><span>댓글 {post.comments.length}</span></div>{mine && <p className="liked-by-list">♥ 좋아요한 사람: {likers[post.id]?.length ? likers[post.id].join(", ") : "아직 없어요"}</p>}<p><strong>{post.authorName}</strong> {post.caption}</p>
-                  <div className="social-comments">{post.comments.map((comment) => <p key={comment.id}><strong>{comment.authorName}</strong> {comment.content}</p>)}</div>
-                  {user ? <form onSubmit={(event) => { event.preventDefault(); submitSocialAction("comment", post.id); }}><input aria-label="댓글" maxLength={150} value={commentDrafts[post.id] || ""} onChange={(event) => setCommentDrafts({ ...commentDrafts, [post.id]: event.target.value })} placeholder="댓글을 남기고 2점 받기" /><button disabled={busy || !(commentDrafts[post.id] || "").trim()}>게시</button></form> : <button className="social-login-prompt" onClick={() => setLoginOpen(true)}>인증 후 좋아요와 댓글 남기기</button>}
-                </div>
-              </article>; }) : <div className="empty-state"><span>📷</span><strong>아직 공유된 사진이 없어요</strong><p>첫 번째 특별한 일상을 올려 보세요.</p></div>}
+              {data.socialPosts.length ? data.socialPosts.map((post) => <button type="button" className="social-tile" key={post.id} onClick={() => setOpenPostId(post.id)} aria-label={`${post.authorName}님의 게시글 크게 보기`}><Image unoptimized src={post.imageUrl || post.imageData || ""} alt={`${post.authorName}님의 특별한 일상`} width={400} height={400} loading="lazy" /><span className="social-tile-meta"><strong>{post.authorName}</strong><em>♥ {post.likedBy.length} · 댓글 {post.comments.length}</em></span></button>) : <div className="empty-state"><span>📷</span><strong>아직 공유된 사진이 없어요</strong><p>첫 번째 특별한 일상을 올려 보세요.</p></div>}
             </section>
             {data.socialHasMore && <button type="button" className="button secondary social-more" disabled={loadingMore} onClick={loadMorePosts}>{loadingMore ? "불러오는 중..." : "게시글 더 보기"}</button>}
           </> : <>
@@ -760,10 +765,10 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
         </>
       )}
 
-      {(loginOpen || stickerOpen || loginResultOpen || eventDetailOpen || resultOpen || selectedPraise || quizResult) && (
+      {(loginOpen || stickerOpen || loginResultOpen || eventDetailOpen || resultOpen || selectedPraise || quizResult || openPost) && (
         <div className="modal-backdrop" onMouseDown={(event) => {
           if (event.currentTarget === event.target) {
-            setLoginOpen(false); setStickerOpen(false); setLoginResultOpen(false); setEventDetailOpen(false); setResultOpen(false); setSelectedPraise(null); setQuizResult(null);
+            setLoginOpen(false); setStickerOpen(false); setLoginResultOpen(false); setEventDetailOpen(false); setResultOpen(false); setSelectedPraise(null); setOpenPostId(null); setQuizResult(null);
           }
         }}>
           {quizResult && (
@@ -817,6 +822,12 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
               </div>
               <p className="status-note">출석하고 칭찬을 주고받을 때마다 추첨 스티커가 쌓여요.</p>
               <button className="button primary full" onClick={() => setStickerOpen(false)}>확인</button>
+            </section>
+          )}
+          {openPost && (
+            <section className="modal social-modal">
+              <button className="modal-close" onClick={() => setOpenPostId(null)} aria-label="닫기">×</button>
+              {socialCard(openPost)}
             </section>
           )}
           {selectedPraise && (
