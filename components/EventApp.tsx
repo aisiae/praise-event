@@ -137,6 +137,7 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
   const [sentPraises, setSentPraises] = useState<Praise[]>([]);
   const [selectedPraise, setSelectedPraise] = useState<Praise | null>(null);
   const [openPostId, setOpenPostId] = useState<string | null>(null);
+  const [loginReturnPostId, setLoginReturnPostId] = useState<string | null>(null);
   const openPost = openPostId ? data.socialPosts.find((post) => post.id === openPostId) || null : null;
   const [editPraiseContent, setEditPraiseContent] = useState("");
   const [editingPraise, setEditingPraise] = useState(false);
@@ -208,6 +209,7 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
         setResultOpen(false);
         setSelectedPraise(null);
         setOpenPostId(null);
+        setLoginReturnPostId(null);
         setQuizResult(null);
       }
     };
@@ -221,13 +223,20 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
     return sentPraises;
   }, [data.praises, praiseTab, receivedPraises, sentPraises, user]);
 
+  const openEmployeeLogin = (returnPostId: string | null = null) => {
+    setLoginReturnPostId(returnPostId);
+    setOpenPostId(null);
+    setLoginOpen(true);
+  };
+
   const employeeLogin = async (event: FormEvent) => {
     event.preventDefault();
+    const returnPostId = loginReturnPostId;
     setBusy(true);
     try {
       if (data.testMode) {
         const result = await jsonFetch<{ employee: Employee; message: string }>("/api/instagram", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "login", testMode: true, ...login }) });
-        setUser(result.employee); setNotice(result.message); setLoginOpen(false); await refresh(); return;
+        setUser(result.employee); setNotice(result.message); setLoginOpen(false); await refresh(); setOpenPostId(returnPostId); setLoginReturnPostId(null); return;
       }
       const result = await jsonFetch<{
         employee: Employee;
@@ -253,6 +262,8 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
       setLoginResultOpen(result.eventType === "praise");
       setPraiseTab("received");
       await refresh();
+      setOpenPostId(returnPostId);
+      setLoginReturnPostId(null);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "로그인하지 못했습니다.");
     } finally {
@@ -265,13 +276,13 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
                 <div className="social-photo"><Image unoptimized src={post.imageUrl || post.imageData || ""} alt={`${post.authorName}님의 특별한 일상`} width={900} height={900} /><span>◷ {new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(post.capturedAt))}</span></div>
                 <div className="social-card-body"><div className="social-actions"><button type="button" className={liked ? "liked" : ""} disabled={mine} title={mine ? "내 게시글에는 좋아요를 누를 수 없습니다" : undefined} onClick={() => submitSocialAction("like", post.id)} aria-label="좋아요">{liked ? "♥" : "♡"} {post.likedBy.length}</button><span>댓글 {post.comments.length}</span></div>{mine && <p className="liked-by-list">♥ 좋아요한 사람: {likers[post.id]?.length ? likers[post.id].join(", ") : "아직 없어요"}</p>}<p><strong>{post.authorName}</strong> {post.caption}</p>
                   <div className="social-comments">{post.comments.map((comment) => <p key={comment.id}><strong>{comment.authorName}</strong> {comment.content}</p>)}</div>
-                  {user ? <form onSubmit={(event) => { event.preventDefault(); submitSocialAction("comment", post.id); }}><input aria-label="댓글" maxLength={150} value={commentDrafts[post.id] || ""} onChange={(event) => setCommentDrafts({ ...commentDrafts, [post.id]: event.target.value })} placeholder="댓글을 남기고 2점 받기" /><button disabled={busy || !(commentDrafts[post.id] || "").trim()}>게시</button></form> : <button className="social-login-prompt" onClick={() => { setOpenPostId(null); setLoginOpen(true); }}>인증 후 좋아요와 댓글 남기기</button>}
+                  {user ? <form onSubmit={(event) => { event.preventDefault(); submitSocialAction("comment", post.id); }}><input aria-label="댓글" maxLength={150} value={commentDrafts[post.id] || ""} onChange={(event) => setCommentDrafts({ ...commentDrafts, [post.id]: event.target.value })} placeholder="댓글을 남기고 2점 받기" /><button disabled={busy || !(commentDrafts[post.id] || "").trim()}>게시</button></form> : <button className="social-login-prompt" onClick={() => openEmployeeLogin(post.id)}>인증 후 좋아요와 댓글 남기기</button>}
                 </div>
               </article>; };
 
   const submitSocialAction = async (action: "post" | "comment" | "like", postId?: string) => {
     if (data.preview) { setNotice("미리보기에서는 실제 데이터가 저장되지 않습니다."); return; }
-    if (!user) { setOpenPostId(null); setLoginOpen(true); return; }
+    if (!user) { openEmployeeLogin(postId || null); return; }
     if (action === "like" && postId) {
       const myId = String(user.employeeId); const toggleLike = (rows: SocialPost[]) => rows.map((post) => post.id !== postId ? post : { ...post, likedBy: post.likedBy.includes(myId) ? post.likedBy.filter((id) => id !== myId) : [...post.likedBy, myId] });
       setData((current) => ({ ...current, socialPosts: toggleLike(current.socialPosts) }));
@@ -768,7 +779,7 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
       {(loginOpen || stickerOpen || loginResultOpen || eventDetailOpen || resultOpen || selectedPraise || quizResult || openPost) && (
         <div className="modal-backdrop" onMouseDown={(event) => {
           if (event.currentTarget === event.target) {
-            setLoginOpen(false); setStickerOpen(false); setLoginResultOpen(false); setEventDetailOpen(false); setResultOpen(false); setSelectedPraise(null); setOpenPostId(null); setQuizResult(null);
+            setLoginOpen(false); setLoginReturnPostId(null); setStickerOpen(false); setLoginResultOpen(false); setEventDetailOpen(false); setResultOpen(false); setSelectedPraise(null); setOpenPostId(null); setQuizResult(null);
           }
         }}>
           {quizResult && (
@@ -788,7 +799,7 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
           )}
           {loginOpen && (
             <form className="modal" onSubmit={employeeLogin}>
-              <button type="button" className="modal-close" onClick={() => setLoginOpen(false)} aria-label="닫기">×</button>
+              <button type="button" className="modal-close" onClick={() => { setLoginOpen(false); setLoginReturnPostId(null); }} aria-label="닫기">×</button>
               <div className="modal-symbol">★</div>
               <span className="section-label">WELCOME</span>
               <h2>직원 인증하고 입장하기</h2>
