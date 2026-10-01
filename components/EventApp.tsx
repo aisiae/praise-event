@@ -271,7 +271,7 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
 
   const submitSocialAction = async (action: "post" | "comment" | "like", postId?: string) => {
     if (data.preview) { setNotice("미리보기에서는 실제 데이터가 저장되지 않습니다."); return; }
-    if (!user) { setLoginOpen(true); return; }
+    if (!user) { setOpenPostId(null); setLoginOpen(true); return; }
     if (action === "like" && postId) {
       const myId = String(user.employeeId); const toggleLike = (rows: SocialPost[]) => rows.map((post) => post.id !== postId ? post : { ...post, likedBy: post.likedBy.includes(myId) ? post.likedBy.filter((id) => id !== myId) : [...post.likedBy, myId] });
       setData((current) => ({ ...current, socialPosts: toggleLike(current.socialPosts) }));
