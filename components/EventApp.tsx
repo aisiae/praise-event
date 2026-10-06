@@ -67,6 +67,8 @@ type AdminData = {
   praises: Praise[];
   quizzes: Quiz[];
   responses: Array<{ id: string; date: string; employeeId: string; name: string; answer: number; correct: boolean }>;
+  socialPosts: Array<{ id: string; authorName: string; caption: string; createdAt?: string }>;
+  socialComments: Array<SocialComment & { postId: string }>;
   hasPublishedResult: boolean;
   resultPublished: boolean;
 };
@@ -167,7 +169,7 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
 
   const refresh = useCallback(async () => {
     if (initialData.preview) return;
-    const next = await jsonFetch<PublicData>(initialData.testMode ? "/api/instagram?test=1" : "/api/public");
+    const next = await jsonFetch<PublicData>(initialData.testMode ? "/api/instagram?test=1" : "/api/public?fresh=1");
     setData((prev) => {
       // keep older pages the user already opened via "더 보기"
       const ids = new Set(next.socialPosts.map((post) => post.id));
@@ -568,7 +570,7 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
                   ["settings", "이벤트 설정"],
                   ...(admin.settings.type === "quiz" ? [["quizzes", "퀴즈 관리"]] : []),
                   ["prizes", "상품 관리"],
-                  ...(admin.settings.type === "praise" ? [["posts", "게시글 관리"]] : []),
+                  ...(admin.settings.type === "praise" ? [["posts", "게시글 관리"]] : admin.settings.type === "instagram" ? [["posts", "댓글 관리"]] : []),
                   ["status", "이벤트 현황"],
                   ["results", "결과"],
                 ] as Array<[typeof adminTab, string]>).map(([id, label]) => <button key={id} className={adminTab === id ? "active" : ""} onClick={() => setAdminTab(id)}>{label}</button>)}
@@ -639,8 +641,14 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
               </section>}
 
               {adminTab === "posts" && <section className="panel admin-section">
-                <div className="section-head compact"><div><h3>게시글 관리</h3><p className="muted">게시된 칭찬 내용을 확인하고 필요한 경우 삭제할 수 있습니다.</p></div><span className="count">{admin.praises.length}</span></div>
-                <div className="admin-post-list">{admin.praises.map((praise) => <article key={praise.id}><div><strong>To. {praise.targetName}</strong><span>From. {praise.writerName}</span><p>{praise.content}</p></div><button className="table-action delete" disabled={busy} onClick={() => confirm("이 칭찬 게시글을 삭제할까요?") && runAdmin({ action: "deletePraise", praiseId: praise.id }, "게시글을 삭제했습니다.")}>삭제</button></article>)}</div>
+                {admin.settings.type === "instagram" ? <>
+                  <div className="section-head compact"><div><h3>댓글 관리</h3><p className="muted">같은 직원이 같은 게시글에 같은 내용으로 남긴 댓글은 가장 먼저 작성된 1개만 남기고 정리합니다.</p></div><button className="button secondary" disabled={busy} onClick={() => confirm("중복 댓글을 일괄 정리할까요? 각 중복 그룹에서 가장 먼저 작성된 댓글 1개만 남습니다.") && runAdmin({ action: "cleanupDuplicateSocialComments" }, "중복 댓글을 정리했습니다.")}>중복 댓글 정리</button></div>
+                  <div className="admin-post-list">{admin.socialComments.map((comment) => { const post = admin.socialPosts.find((item) => item.id === comment.postId); return <article key={comment.id}><div><strong>{comment.authorName}</strong><span>{post ? `${post.authorName}님의 게시글 · ${formatDate(comment.createdAt)}` : `게시글 ${comment.postId}`}</span><p>{comment.content}</p></div><button className="table-action delete" disabled={busy} onClick={() => confirm("이 댓글을 삭제할까요?") && runAdmin({ action: "deleteSocialComment", commentId: comment.id }, "댓글을 삭제했습니다.")}>삭제</button></article>; })}</div>
+                  {!admin.socialComments.length && <div className="empty-state compact-empty"><strong>등록된 댓글이 없습니다.</strong></div>}
+                </> : <>
+                  <div className="section-head compact"><div><h3>게시글 관리</h3><p className="muted">게시된 칭찬 내용을 확인하고 필요한 경우 삭제할 수 있습니다.</p></div><span className="count">{admin.praises.length}</span></div>
+                  <div className="admin-post-list">{admin.praises.map((praise) => <article key={praise.id}><div><strong>To. {praise.targetName}</strong><span>From. {praise.writerName}</span><p>{praise.content}</p></div><button className="table-action delete" disabled={busy} onClick={() => confirm("이 칭찬 게시글을 삭제할까요?") && runAdmin({ action: "deletePraise", praiseId: praise.id }, "게시글을 삭제했습니다.")}>삭제</button></article>)}</div>
+                </>}
               </section>}
 
               {adminTab === "status" && <section className="panel admin-section">

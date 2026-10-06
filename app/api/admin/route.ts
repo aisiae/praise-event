@@ -99,6 +99,7 @@ async function adminData(selectedId?: string) {
     quizzes: quizzes.map((doc) => ({ id: doc.id, date: doc.id, ...doc.data() })).sort((a: any, b: any) => String(a.date).localeCompare(String(b.date))),
     responses: responses.map((doc) => ({ id: doc.id, ...doc.data() })), standings: sortedStandings,
     socialPosts: socialPosts.map((doc) => ({ id: doc.id, ...doc.data() })),
+    socialComments: socialComments.map((doc) => ({ id: doc.id, ...doc.data() })).sort((a: any, b: any) => b.createdAt?.toMillis?.() - a.createdAt?.toMillis?.()),
     hasPublishedResult: result.exists, resultPublished: result.exists && Boolean(selectedEvent.showResults), publishedResults: result.data()?.results || [],
   }) as Record<string, unknown>;
 }
@@ -240,6 +241,24 @@ export async function POST(request: NextRequest) {
       refreshPublic = eventId === (await getActiveEvent()).id;
     } else if (action === "deletePraise") {
       const eventId = String(body.eventId || ""); const source = eventId === LEGACY_EVENT_ID ? adminDb.collection("praises") : eventCollection(eventId, "praises"); await source.doc(String(body.praiseId || "")).delete(); await logAdmin("칭찬 게시글 삭제", String(body.praiseId || ""), eventId);
+      refreshPublic = eventId === (await getActiveEvent()).id;
+    } else if (action === "deleteSocialComment") {
+      const eventId = String(body.eventId || ""); const commentId = String(body.commentId || "");
+      if (!commentId) throw new Error("삭제할 댓글을 확인해 주세요.");
+      await eventCollection(eventId, "socialComments").doc(commentId).delete(); await logAdmin("댓글 삭제", commentId, eventId);
+      refreshPublic = eventId === (await getActiveEvent()).id;
+    } else if (action === "cleanupDuplicateSocialComments") {
+      const eventId = String(body.eventId || ""); const comments = await eventCollection(eventId, "socialComments").get();
+      const seen = new Set<string>(); const duplicateRefs: FirebaseFirestore.DocumentReference[] = [];
+      comments.docs.sort((a, b) => (a.data().createdAt?.toMillis?.() || 0) - (b.data().createdAt?.toMillis?.() || 0)).forEach((doc) => {
+        const row = doc.data();
+        const key = `${String(row.postId || "")}\u0000${String(row.employeeId || "")}\u0000${String(row.content || "").trim().replace(/\s+/g, " ")}`;
+        if (seen.has(key)) duplicateRefs.push(doc.ref); else seen.add(key);
+      });
+      for (let index = 0; index < duplicateRefs.length; index += 400) {
+        const batch = adminDb.batch(); duplicateRefs.slice(index, index + 400).forEach((ref) => batch.delete(ref)); await batch.commit();
+      }
+      await logAdmin("중복 댓글 정리", eventId, `${duplicateRefs.length}개 삭제`);
       refreshPublic = eventId === (await getActiveEvent()).id;
     } else if (action === "publishResults") {
       const eventId = String(body.eventId || ""); const current = await adminData(eventId) as any;
