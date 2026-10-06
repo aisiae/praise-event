@@ -179,6 +179,10 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
     });
   }, [initialData.preview, initialData.testMode]);
   const [loadingMore, setLoadingMore] = useState(false);
+  const refreshPostComments = useCallback(async (postId: string) => {
+    const result = await jsonFetch<{ comments: SocialComment[] }>(`/api/instagram?comments=1${data.testMode ? "&test=1" : ""}&postId=${encodeURIComponent(postId)}`);
+    setData((current) => ({ ...current, socialPosts: current.socialPosts.map((post) => post.id === postId ? { ...post, comments: result.comments } : post) }));
+  }, [data.testMode]);
   const loadMorePosts = async () => {
     if (loadingMore || !data.socialCursor) return;
     setLoadingMore(true);
@@ -302,7 +306,8 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
       if (action === "post") setSocialDraft({ caption: "", imageData: "", capturedAt: "" });
       if (action === "comment" && postId) setCommentDrafts((value) => ({ ...value, [postId]: "" }));
       setNotice(action === "post" ? "특별한 일상을 공유했습니다. 게시글 3점이 반영됩니다." : action === "comment" ? "댓글 2점이 반영됩니다." : "좋아요가 반영되었습니다.");
-      await refresh();
+      if (action === "comment" && postId) await refreshPostComments(postId);
+      else await refresh();
     } catch (error) { setNotice(error instanceof Error ? error.message : "요청을 처리하지 못했습니다."); }
     finally { setBusy(false); }
   };
@@ -761,7 +766,7 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
             </form>}
             <section className="social-wall-head"><div><span className="section-label">PHOTO FEED</span><h2>우리의 특별한 일상</h2><p>동료의 순간에 좋아요와 댓글을 남겨 보세요.</p></div><strong>{data.socialTotal ?? data.socialPosts.length} posts</strong></section>
             <section className="social-feed">
-              {data.socialPosts.length ? data.socialPosts.map((post) => <button type="button" className="social-tile" key={post.id} onClick={() => setOpenPostId(post.id)} aria-label={`${post.authorName}님의 게시글 크게 보기`}><Image unoptimized src={post.imageUrl || post.imageData || ""} alt={`${post.authorName}님의 특별한 일상`} width={400} height={400} loading="lazy" /><span className="social-tile-meta"><strong>{post.authorName}</strong><em>♥ {post.likedBy.length} · 댓글 {post.comments.length}</em></span></button>) : <div className="empty-state"><span>📷</span><strong>아직 공유된 사진이 없어요</strong><p>첫 번째 특별한 일상을 올려 보세요.</p></div>}
+              {data.socialPosts.length ? data.socialPosts.map((post) => <button type="button" className="social-tile" key={post.id} onClick={() => { setOpenPostId(post.id); if (!data.preview) refreshPostComments(post.id).catch(() => {}); }} aria-label={`${post.authorName}님의 게시글 크게 보기`}><Image unoptimized src={post.imageUrl || post.imageData || ""} alt={`${post.authorName}님의 특별한 일상`} width={400} height={400} loading="lazy" /><span className="social-tile-meta"><strong>{post.authorName}</strong><em>♥ {post.likedBy.length} · 댓글 {post.comments.length}</em></span></button>) : <div className="empty-state"><span>📷</span><strong>아직 공유된 사진이 없어요</strong><p>첫 번째 특별한 일상을 올려 보세요.</p></div>}
             </section>
             {data.socialHasMore && <button type="button" className="button secondary social-more" disabled={loadingMore} onClick={loadMorePosts}>{loadingMore ? "불러오는 중..." : "게시글 더 보기"}</button>}
           </> : <>

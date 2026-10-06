@@ -20,6 +20,20 @@ export async function GET(request: NextRequest) {
   try {
     const params = request.nextUrl.searchParams;
     const testMode = params.get("test") === "1";
+    if (params.get("comments") === "1") {
+      const postId = String(params.get("postId") || "");
+      if (!postId) throw new Error("게시글을 확인해 주세요.");
+      if (testMode) await ensureInstagramTestEvent();
+      const event = testMode ? await getEvent(INSTAGRAM_TEST_EVENT_ID) : await getActiveEvent();
+      if (!testMode && event.type !== "instagram") throw new Error("현재 나도 인스타 이벤트가 아닙니다.");
+      // Do not use the feed's multi-post query here.  A post detail always
+      // reads its complete comment set, including the 11th comment and later.
+      const snap = await eventCollection(event.id, "socialComments").where("postId", "==", postId).get();
+      const comments = snap.docs
+        .map((doc) => ({ id: doc.id, ...doc.data() }))
+        .sort((a: any, b: any) => (a.createdAt?.toMillis?.() || 0) - (b.createdAt?.toMillis?.() || 0));
+      return NextResponse.json(serialize({ comments }), { headers: { "Cache-Control": "no-store" } });
+    }
     if (params.get("feed") === "1") {
       // Next page of the feed ("더 보기"). Works for the live event and the test room.
       if (testMode) await ensureInstagramTestEvent();
