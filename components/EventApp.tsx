@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { signInWithEmailAndPassword, signOut } from "firebase/auth";
 import Image from "next/image";
+import Link from "next/link";
 import { getFirebaseAuth } from "@/lib/firebase-client";
 import { quizPrizePreset } from "@/lib/settings";
 
@@ -558,6 +559,7 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
                       </div>
                     </div>)}
                   </div>
+                  <Link className="event-select-button" href="/bingo-test"><span>▦</span><div><strong>[테스트] 오늘의 선택 빙고</strong><small>관리자 전용 기능 테스트</small></div></Link>
                   <div className="event-create-actions">
                     <button className="button secondary" disabled={busy} onClick={() => runAdmin({ action: "createEvent", type: "quiz" }, "새 퀴즈 이벤트를 만들었습니다.")}>+ 퀴즈 이벤트</button>
                     <button className="button secondary" disabled={busy} onClick={() => runAdmin({ action: "createEvent", type: "praise" }, "새 칭찬 이벤트를 만들었습니다.")}>+ 칭찬 이벤트</button>
