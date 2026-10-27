@@ -3,7 +3,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { signInWithEmailAndPassword, signOut } from "firebase/auth";
 import Image from "next/image";
-import Link from "next/link";
+import BingoTest from "@/components/BingoTest";
 import { getFirebaseAuth } from "@/lib/firebase-client";
 import { quizPrizePreset } from "@/lib/settings";
 
@@ -149,6 +149,7 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
   const [targetId, setTargetId] = useState("");
   const [content, setContent] = useState("");
   const [adminOpen, setAdminOpen] = useState(false);
+  const [bingoSelected, setBingoSelected] = useState(false);
   const [admin, setAdmin] = useState<AdminData | null>(null);
   const [adminLogin, setAdminLogin] = useState({ email: "", password: "" });
   const [rememberAdminEmail, setRememberAdminEmail] = useState(false);
@@ -458,6 +459,7 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
   };
 
   const loadAdminEvent = async (eventId: string) => {
+    setBingoSelected(false);
     setAdminTab("settings");
     const selected = admin?.events.find((event) => event.id === eventId);
     if (admin && selected) {
@@ -509,7 +511,7 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
         </div>
       </header>
 
-      {!adminOpen && (
+      {!adminOpen && !bingoSelected && (
         <section className="hero">
           <div className="hero-copy">
             <span className="eyebrow">{data.event.type === "quiz" ? "ONE QUIZ A DAY" : data.event.type === "instagram" ? "MY SPECIAL MOMENT" : "PRAISE & ATTENDANCE"}</span>
@@ -548,9 +550,9 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
               </div>
               <div className="admin-workspace">
                 <aside className="event-sidebar panel">
-                  <div className="event-sidebar-head"><strong>이벤트 목록</strong><span>{admin.events.length}</span></div>
+                  <div className="event-sidebar-head"><strong>이벤트 목록</strong><span>{admin.events.length + 1}</span></div>
                   <div className="event-list">
-                    {admin.events.map((event, index) => <div className={`event-list-row ${adminTab !== "employees" && admin.selectedEventId === event.id ? "active" : ""}`} key={event.id}>
+                    {admin.events.map((event, index) => <div className={`event-list-row ${!bingoSelected && adminTab !== "employees" && admin.selectedEventId === event.id ? "active" : ""}`} key={event.id}>
                       <button className="event-select-button" disabled={busy} onClick={() => loadAdminEvent(event.id)}><span>{event.type === "quiz" ? "Q" : event.type === "instagram" ? "▣" : "♥"}</span><div><strong>{event.eventName}</strong><small>{event.status === "active" ? "진행 중" : event.status === "closed" ? "종료" : "준비 중"}</small></div></button>
                       <div className="event-row-actions">
                         <button aria-label={`${event.eventName} 위로 이동`} title="위로 이동" disabled={busy || index === 0} onClick={() => runAdmin({ action: "moveEvent", eventId: event.id, direction: "up" }, "이벤트 순서를 변경했습니다.")}>↑</button>
@@ -559,19 +561,20 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
                       </div>
                     </div>)}
                   </div>
-                  <Link className="event-select-button" href="/bingo-test"><span>▦</span><div><strong>[테스트] 오늘의 선택 빙고</strong><small>관리자 전용 기능 테스트</small></div></Link>
+                  <div className={`event-list-row ${bingoSelected ? "active" : ""}`}><button className="event-select-button" onClick={() => { setBingoSelected(true); setAdminTab("settings"); }}><span>▦</span><div><strong>[테스트] 오늘의 선택 빙고</strong><small>관리자 기능 테스트</small></div></button></div>
                   <div className="event-create-actions">
                     <button className="button secondary" disabled={busy} onClick={() => runAdmin({ action: "createEvent", type: "quiz" }, "새 퀴즈 이벤트를 만들었습니다.")}>+ 퀴즈 이벤트</button>
                     <button className="button secondary" disabled={busy} onClick={() => runAdmin({ action: "createEvent", type: "praise" }, "새 칭찬 이벤트를 만들었습니다.")}>+ 칭찬 이벤트</button>
                     <button className="button secondary" disabled={busy} onClick={() => runAdmin({ action: "createEvent", type: "instagram" }, "새 나도 인스타 이벤트를 만들었습니다.")}>+ 사진 이벤트</button>
-                    <button className="button secondary" disabled={busy} onClick={() => runAdmin({ action: "copyEvent" }, "이벤트 설정을 복사했습니다.")}>선택 이벤트 복사</button>
+                    <button className="button secondary" disabled={busy || bingoSelected} onClick={() => runAdmin({ action: "copyEvent" }, "이벤트 설정을 복사했습니다.")}>선택 이벤트 복사</button>
                   </div>
                   <div className="common-admin-nav">
                     <span>공통 관리</span>
-                    <button className={adminTab === "employees" ? "active" : ""} onClick={() => setAdminTab("employees")}><strong>👥 명단 관리</strong><small>모든 이벤트에서 함께 사용</small></button>
+                    <button className={adminTab === "employees" ? "active" : ""} onClick={() => { setBingoSelected(false); setAdminTab("employees"); }}><strong>👥 명단 관리</strong><small>모든 이벤트에서 함께 사용</small></button>
                   </div>
                 </aside>
                 <div className="admin-content">
+              {bingoSelected ? <BingoTest adminMode /> : <>
               <nav className="admin-tabs" aria-label="관리자 메뉴">
                 {([
                   ["settings", "이벤트 설정"],
@@ -686,6 +689,7 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
                   </div>
                 </section>
               </section>}
+              </>}
                 </div>
               </div>
             </>
@@ -693,6 +697,7 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
         </section>
       ) : (
         <>
+          {bingoSelected ? <BingoTest /> : <>
           {data.event.type === "praise" ? <>
           <section className="entry-strip">
             <div className="entry-message">
@@ -787,6 +792,7 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
                     {quizSubmission ? <div className={`quiz-complete ${quizSubmission.correct ? "correct" : "incorrect"}`}><strong>{quizSubmission.correct ? "✓ 정답을 맞혔어요!" : "오늘의 퀴즈 참여 완료"}</strong><p>{quizResult?.facilitatorComment || "하루 한 문제씩 출제됩니다. 내일도 문제를 맞혀 주세요!"}</p></div> : <button className="button primary full" disabled={busy || quizAnswer === null}>{busy ? "제출하고 있어요…" : "정답 제출하기"}</button>}
                   </form>}
             </section>
+          </>}
           </>}
         </>
       )}
