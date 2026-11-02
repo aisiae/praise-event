@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import { requireAdmin } from "@/lib/auth";
 import { getAdminDb } from "@/lib/firebase-admin";
+import { ensureOperationalBingo } from "@/lib/bingo-test-server";
 import { ensureLegacyEvent, eventCollection, eventDocs, getActiveEvent, getEvent, LEGACY_EVENT_ID, listEvents, type EventType } from "@/lib/events";
 import { defaultSettings, instagramPrizePreset, quizPrizePreset } from "@/lib/settings";
 import { getCachedPublicData, logAdmin } from "@/lib/data";
@@ -74,6 +75,7 @@ function shuffleQuizTies<T extends { correctCount: number; participationCount: n
 
 async function adminData(selectedId?: string) {
   await ensureLegacyEvent();
+  await ensureOperationalBingo();
   const adminDb = getAdminDb();
   const activeEvent = await getActiveEvent();
   const selectedEvent = await getEvent(selectedId || activeEvent.id);

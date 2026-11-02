@@ -149,7 +149,7 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
   const [targetId, setTargetId] = useState("");
   const [content, setContent] = useState("");
   const [adminOpen, setAdminOpen] = useState(false);
-  const [bingoSelected, setBingoSelected] = useState(false);
+  const [bingoSelected, setBingoSelected] = useState<false|"test"|"live">(false);
   const [admin, setAdmin] = useState<AdminData | null>(null);
   const [adminLogin, setAdminLogin] = useState({ email: "", password: "" });
   const [rememberAdminEmail, setRememberAdminEmail] = useState(false);
@@ -550,7 +550,7 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
               </div>
               <div className="admin-workspace">
                 <aside className="event-sidebar panel">
-                  <div className="event-sidebar-head"><strong>이벤트 목록</strong><span>{admin.events.length + 1}</span></div>
+                  <div className="event-sidebar-head"><strong>이벤트 목록</strong><span>{admin.events.length + 2}</span></div>
                   <div className="event-list">
                     {admin.events.map((event, index) => <div className={`event-list-row ${!bingoSelected && adminTab !== "employees" && admin.selectedEventId === event.id ? "active" : ""}`} key={event.id}>
                       <button className="event-select-button" disabled={busy} onClick={() => loadAdminEvent(event.id)}><span>{event.type === "quiz" ? "Q" : event.type === "instagram" ? "▣" : "♥"}</span><div><strong>{event.eventName}</strong><small>{event.status === "active" ? "진행 중" : event.status === "closed" ? "종료" : "준비 중"}</small></div></button>
@@ -561,12 +561,13 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
                       </div>
                     </div>)}
                   </div>
-                  <div className={`event-list-row ${bingoSelected ? "active" : ""}`}><button className="event-select-button" onClick={() => { setBingoSelected(true); setAdminTab("settings"); }}><span>▦</span><div><strong>[테스트] 오늘의 선택 빙고</strong><small>관리자 기능 테스트</small></div></button></div>
+                  <div className={`event-list-row ${bingoSelected === "test" ? "active" : ""}`}><button className="event-select-button" onClick={() => { setBingoSelected("test"); setAdminTab("settings"); }}><span>▦</span><div><strong>[테스트] 오늘의 선택 빙고</strong><small>관리자 기능 테스트</small></div></button></div>
+                  <div className={`event-list-row ${bingoSelected === "live" ? "active" : ""}`}><button className="event-select-button" onClick={() => { setBingoSelected("live"); setAdminTab("settings"); }}><span>▦</span><div><strong>오늘의 선택 빙고</strong><small>운영용 · 일정 및 게시 별도 설정</small></div></button></div>
                   <div className="event-create-actions">
                     <button className="button secondary" disabled={busy} onClick={() => runAdmin({ action: "createEvent", type: "quiz" }, "새 퀴즈 이벤트를 만들었습니다.")}>+ 퀴즈 이벤트</button>
                     <button className="button secondary" disabled={busy} onClick={() => runAdmin({ action: "createEvent", type: "praise" }, "새 칭찬 이벤트를 만들었습니다.")}>+ 칭찬 이벤트</button>
                     <button className="button secondary" disabled={busy} onClick={() => runAdmin({ action: "createEvent", type: "instagram" }, "새 나도 인스타 이벤트를 만들었습니다.")}>+ 사진 이벤트</button>
-                    <button className="button secondary" disabled={busy || bingoSelected} onClick={() => runAdmin({ action: "copyEvent" }, "이벤트 설정을 복사했습니다.")}>선택 이벤트 복사</button>
+                    <button className="button secondary" disabled={busy || !!bingoSelected} onClick={() => runAdmin({ action: "copyEvent" }, "이벤트 설정을 복사했습니다.")}>선택 이벤트 복사</button>
                   </div>
                   <div className="common-admin-nav">
                     <span>공통 관리</span>
@@ -574,7 +575,7 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
                   </div>
                 </aside>
                 <div className="admin-content">
-              {bingoSelected ? <BingoTest adminMode /> : <>
+              {bingoSelected ? <BingoTest adminMode mode={bingoSelected || "test"} key={bingoSelected || "none"} /> : <>
               <nav className="admin-tabs" aria-label="관리자 메뉴">
                 {([
                   ["settings", "이벤트 설정"],
@@ -697,7 +698,7 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
         </section>
       ) : (
         <>
-          {bingoSelected ? <BingoTest /> : <>
+          {bingoSelected ? <BingoTest mode={bingoSelected || "test"} key={bingoSelected || "none"} /> : <>
           {data.event.type === "praise" ? <>
           <section className="entry-strip">
             <div className="entry-message">
