@@ -1,6 +1,7 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { unstable_cache } from "next/cache";
 import { getAdminDb } from "@/lib/firebase-admin";
+import { bingoEvent, readBingoConfig } from "@/lib/bingo-test-server";
 import { getActiveEvent, eventCollection, eventDocs, LEGACY_EVENT_ID, todayQuiz } from "@/lib/events";
 import { defaultSettings } from "@/lib/settings";
 import { getSocialFeed } from "@/lib/social";
@@ -21,6 +22,16 @@ export async function getSettings() {
 
 export async function getPublicData() {
   const adminDb = getAdminDb();
+  const bingo = await bingoEvent("live").get();
+  if (bingo.data()?.status === "active") {
+    const config = readBingoConfig(bingo.data(), "live");
+    return serialize({
+      event: { id: bingo.id, type: "bingo", status: "active" },
+      settings: { ...defaultSettings, ...config, id: bingo.id, type: "bingo", showResults: false },
+      quiz: null, employees: [], praises: [], socialPosts: [], prizes: [], results: [],
+      stats: { employeeCount: 0, praiseCount: 0, todayAttendance: 0 },
+    });
+  }
   const settings = await getActiveEvent();
   if (settings.type === "quiz") await ensureSeptember2026Quizzes(settings.id);
   const praiseQuery = settings.id === LEGACY_EVENT_ID

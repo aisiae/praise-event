@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import { requireAdmin } from "@/lib/auth";
 import { getAdminDb } from "@/lib/firebase-admin";
-import { ensureOperationalBingo } from "@/lib/bingo-test-server";
+import { bingoEvent, ensureOperationalBingo } from "@/lib/bingo-test-server";
 import { ensureLegacyEvent, eventCollection, eventDocs, getActiveEvent, getEvent, LEGACY_EVENT_ID, listEvents, type EventType } from "@/lib/events";
 import { defaultSettings, instagramPrizePreset, quizPrizePreset } from "@/lib/settings";
 import { getCachedPublicData, logAdmin } from "@/lib/data";
@@ -208,6 +208,8 @@ export async function POST(request: NextRequest) {
     } else if (action === "activateEvent") {
       const eventId = String(body.eventId || ""); const next = await getEvent(eventId); if (!next.startDate || !next.endDate) throw new Error("활성화하기 전에 시작일과 종료일을 설정해 주세요.");
       const active = await getActiveEvent(); const batch = adminDb.batch();
+      // Switching the main event also ends the separate bingo publication.
+      batch.set(bingoEvent("live"), { status: "draft", version: FieldValue.increment(1), updatedAt: Date.now() }, { merge: true });
       if (active.id !== eventId) batch.set(adminDb.collection("events").doc(active.id), { status: "closed", updatedAt: FieldValue.serverTimestamp() }, { merge: true });
       batch.set(adminDb.collection("events").doc(eventId), { status: "active", updatedAt: FieldValue.serverTimestamp() }, { merge: true }); batch.set(adminDb.doc("config/activeEvent"), { eventId, updatedAt: FieldValue.serverTimestamp() }); await batch.commit(); selectedEventId = eventId;
       await logAdmin("이벤트 활성화", eventId, next.eventName);

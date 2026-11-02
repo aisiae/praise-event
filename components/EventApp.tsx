@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { signInWithEmailAndPassword, signOut } from "firebase/auth";
 import Image from "next/image";
 import BingoTest from "@/components/BingoTest";
+import BingoParticipant from "@/components/BingoParticipant";
 import { getFirebaseAuth } from "@/lib/firebase-client";
 import { quizPrizePreset } from "@/lib/settings";
 
@@ -22,7 +23,7 @@ type SocialComment = { id: string; employeeId: string; authorName: string; conte
 type SocialPost = { id: string; employeeId: string; authorName: string; caption: string; imageData?: string; imageUrl?: string; capturedAt: string; createdAt?: string; comments: SocialComment[]; likedBy: string[] };
 type Settings = {
   id?: string;
-  type?: "praise" | "quiz" | "instagram";
+  type?: "praise" | "quiz" | "instagram" | "bingo";
   status?: "draft" | "active" | "closed";
   eventName: string;
   intro: string;
@@ -43,7 +44,7 @@ type PublishedResult = { rank: number; prizeName: string; amount: number; employ
 export type PublicData = {
   preview?: boolean;
   testMode?: boolean;
-  event: { id: string; type: "praise" | "quiz" | "instagram"; status: string };
+  event: { id: string; type: "praise" | "quiz" | "instagram" | "bingo"; status: string };
   quiz: Quiz | null;
   settings: Settings;
   employees: Employee[];
@@ -511,7 +512,7 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
         </div>
       </header>
 
-      {!adminOpen && !bingoSelected && (
+      {!adminOpen && data.event.type !== "bingo" && (
         <section className="hero">
           <div className="hero-copy">
             <span className="eyebrow">{data.event.type === "quiz" ? "ONE QUIZ A DAY" : data.event.type === "instagram" ? "MY SPECIAL MOMENT" : "PRAISE & ATTENDANCE"}</span>
@@ -575,7 +576,7 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
                   </div>
                 </aside>
                 <div className="admin-content">
-              {bingoSelected ? <BingoTest adminMode mode={bingoSelected || "test"} key={bingoSelected || "none"} /> : <>
+              {bingoSelected ? <BingoTest adminMode mode={bingoSelected || "test"} key={bingoSelected || "none"} onPublicationChange={refresh} /> : <>
               <nav className="admin-tabs" aria-label="관리자 메뉴">
                 {([
                   ["settings", "이벤트 설정"],
@@ -599,7 +600,7 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
               </div>}
 
               {adminTab === "settings" && <section className="panel admin-section settings-panel">
-                  <div className="section-head compact"><div><h3>이벤트 설정</h3><p className="muted">{admin.settings.type === "quiz" ? "오늘의 퀴즈" : admin.settings.type === "instagram" ? "나도 인스타" : "칭찬 우체국"} · {admin.settings.status === "active" ? "진행 중" : admin.settings.status === "closed" ? "종료" : "준비 중"}</p></div>{admin.activeEventId !== admin.selectedEventId && <button className="button accent" disabled={busy} onClick={() => confirm("이 이벤트를 일반 화면에 활성화할까요? 현재 활성 이벤트는 종료 처리됩니다.") && runAdmin({ action: "activateEvent" }, "선택한 이벤트를 활성화했습니다.")}>이벤트 활성화</button>}</div>
+                  <div className="section-head compact"><div><h3>이벤트 설정</h3><p className="muted">{admin.settings.type === "quiz" ? "오늘의 퀴즈" : admin.settings.type === "instagram" ? "나도 인스타" : "칭찬 우체국"} · {admin.settings.status === "active" ? "진행 중" : admin.settings.status === "closed" ? "종료" : "준비 중"}</p></div>{(data.event.type === "bingo" || admin.activeEventId !== admin.selectedEventId) && <button className="button accent" disabled={busy} onClick={() => confirm("이 이벤트를 일반 화면에 활성화할까요? 현재 활성 이벤트는 종료 처리됩니다.") && runAdmin({ action: "activateEvent" }, "선택한 이벤트를 활성화했습니다.")}>이벤트 활성화</button>}</div>
                   <label>이벤트명<input value={admin.settings.eventName} onChange={(e) => setAdmin({ ...admin, settings: { ...admin.settings, eventName: e.target.value } })} /></label>
                   <label>소개 문구<input value={admin.settings.intro} onChange={(e) => setAdmin({ ...admin, settings: { ...admin.settings, intro: e.target.value } })} /></label>
                   <div className="two">
@@ -698,7 +699,7 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
         </section>
       ) : (
         <>
-          {bingoSelected ? <BingoTest mode={bingoSelected || "test"} key={bingoSelected || "none"} /> : <>
+          {data.event.type === "bingo" ? <BingoParticipant mode="live" /> : <>
           {data.event.type === "praise" ? <>
           <section className="entry-strip">
             <div className="entry-message">
