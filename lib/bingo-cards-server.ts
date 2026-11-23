@@ -22,12 +22,11 @@ function makeDeck(): Deck {
 
 function publicDeck(date: string, employeeId: string, deck?: Deck): BingoCardGame {
   const draws = deck?.draws ?? [];
-  const own = draws.find(draw => draw.employeeId === employeeId);
-  return {
-    date,
-    taken: draws.map(draw => draw.index),
-    draw: own && deck ? { index: own.index, points: deck.points[own.index] } : null,
-  };
+  const opened = deck
+    ? deck.draws.filter(draw => draw.employeeId === employeeId)
+        .map(({ index }) => ({ index, points: deck.points[index] }))
+    : [];
+  return { date, taken: draws.map(draw => draw.index), draw: opened.at(-1) ?? null, opened };
 }
 
 export async function readBingoCardGame(date: string, employeeId: string) {
@@ -55,8 +54,9 @@ export async function flipBingoCard(employeeId: string, date: unknown, index: un
     }
 
     const deck = (deckSnap.data() as Deck | undefined) ?? makeDeck();
-    if (deck.draws.some(draw => draw.employeeId === employeeId)) return publicDeck(today, employeeId, deck);
-    if (deck.draws.some(draw => draw.index === index)) {
+    const existing = deck.draws.find(draw => draw.index === index);
+    if (existing) {
+      if (existing.employeeId === employeeId) return publicDeck(today, employeeId, deck);
       throw new Error("다른 직원이 먼저 고른 카드예요. 다른 카드를 골라 주세요.");
     }
 

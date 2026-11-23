@@ -11,71 +11,166 @@
   position: fixed;
   inset: 0;
   box-sizing: border-box;
-  width: min(640px, calc(100% - 24px));
+  width: min(720px, calc(100% - 24px));
   max-height: calc(100dvh - 24px);
   margin: auto;
-  padding: clamp(14px, 4vw, 30px);
+  padding: clamp(16px, 4vw, 30px);
   overflow: auto;
-  background: #fff9f1;
+  background: linear-gradient(155deg, #fbf3fd, #fff8ec);
   color: #2f2146;
   border: 1px solid #dcc9ef;
   border-radius: 24px;
   box-shadow: 0 24px 75px #27164355;
 }
 
-.dialog::backdrop { background: #211331ad; }
-
-.header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.header h2 {
-  margin: 0 0 5px;
-  font-size: clamp(20px, 4vw, 29px);
-}
-
-.header p, .result, .error { margin: 0 0 12px; }
-.result { color: #58368b; font-weight: 800; }
+.dialog::backdrop { background: #211331b5; }
+.header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.header h2 { margin: 0 0 6px; font-size: clamp(20px, 4vw, 29px); }
+.header p, .status, .error { margin: 0 0 12px; }
+.status { color: #58368b; font-weight: 800; }
 .error { color: #a32644; }
 
 .grid {
   display: grid;
   grid-template-columns: repeat(8, minmax(0, 1fr));
-  gap: clamp(4px, 1vw, 9px);
+  gap: clamp(5px, 1.2vw, 11px);
+}
+
+.card, .face {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  place-items: center;
+  border: 1px solid #b89ce5;
+  border-radius: 9px;
+  background:
+    radial-gradient(ellipse at 22% 6%, #a274d1 0%, transparent 52%),
+    repeating-linear-gradient(42deg, transparent 0 7px, #e6d7ff18 8px 9px),
+    linear-gradient(155deg, #684194, #332052 81%);
+  color: #f7daa1;
+  box-shadow: 0 3px 6px #36185335;
+}
+
+.card::before, .face::before {
+  content: "";
+  position: absolute;
+  inset: 5px;
+  border: 1px solid #f7daa192;
+  border-radius: 5px;
+  pointer-events: none;
 }
 
 .card {
   min-width: 0;
-  min-height: 40px;
-  aspect-ratio: 1;
+  min-height: 42px;
+  aspect-ratio: .76;
   padding: 0;
-  border: 1px solid #8159a9;
-  border-radius: 10px;
-  background: linear-gradient(155deg, #754caa, #4b3077);
-  color: #fff;
   font: inherit;
+  font-size: clamp(16px, 3vw, 28px);
   font-weight: 800;
   cursor: pointer;
+  transition: transform .16s ease, box-shadow .16s ease;
 }
 
+.card span, .back span { position: relative; text-shadow: 0 0 14px #ffd9719c; }
 .card:hover:not(:disabled), .card:focus-visible {
-  outline: 3px solid #da8e34;
-  outline-offset: 1px;
+  z-index: 1;
+  transform: translateY(-4px);
+  outline: 2px solid #b88434;
+  outline-offset: 2px;
+  box-shadow: 0 6px 13px #36185360;
 }
 
 .card:disabled { cursor: default; }
-.card:disabled:not([data-open="true"]) { opacity: .55; }
+.card[data-state="taken"] { background: #eae2ef; color: #725e80; box-shadow: none; }
+.card[data-state="own"] { background: #ffe1a0; border-color: #b97c35; color: #633708; }
+.card[data-state="own"], .card[data-state="taken"] { font-size: clamp(13px, 2.2vw, 19px); }
 
-.card[data-open="true"] {
-  background: #ffdc8e;
-  border-color: #b27125;
-  color: #532f12;
-  animation: flip .42s ease-out;
+.reveal {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  overflow: hidden;
+  padding: 18px 8px;
+  border-radius: 18px;
+  text-align: center;
+  background: radial-gradient(ellipse at 50% 34%, #e9d6f3, #f7edf8 64%, transparent);
 }
 
-@keyframes flip { from { transform: rotateY(90deg); } to { transform: rotateY(0); } }
-@media (max-width: 480px) { .grid { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
-@media (prefers-reduced-motion: reduce) { .card[data-open="true"] { animation: none; } }
+.reveal[data-win="true"] {
+  background: radial-gradient(ellipse at 50% 30%, #ffe3a4, #fbebed 60%, transparent);
+}
+
+.cardStage {
+  z-index: 1;
+  position: relative;
+  width: clamp(114px, 31vw, 164px);
+  aspect-ratio: .72;
+  perspective: 820px;
+  animation: grow .67s cubic-bezier(.16, 1, .32, 1) both;
+}
+
+.flipper {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+  animation: reveal .72s .12s cubic-bezier(.33, .08, .25, 1) both;
+}
+
+.face {
+  position: absolute;
+  inset: 0;
+  border-radius: 16px;
+  backface-visibility: hidden;
+}
+
+.face::before { inset: 8px; border-radius: 10px; }
+.back { font-size: clamp(40px, 10vw, 64px); }
+.front {
+  transform: rotateY(180deg);
+  align-content: center;
+  background: linear-gradient(145deg, #fffaff, #e5d3f6);
+  color: #563981;
+}
+
+.front::before { border-color: currentColor; opacity: .42; }
+.reveal[data-win="true"] .front { background: linear-gradient(145deg, #fff7d7, #ffc35e); color: #653500; }
+.front strong { font-size: clamp(39px, 10vw, 58px); line-height: 1; }
+.front small { margin-top: 7px; font-size: 13px; font-weight: 800; }
+.corner { position: absolute; top: 13px; left: 16px; }
+.corner:last-child { inset: auto 16px 13px auto; }
+.message { z-index: 1; animation: message .25s .65s both; }
+.message h3 { margin: 0 0 5px; font-size: clamp(19px, 5vw, 26px); }
+.message p { margin: 0 0 13px; }
+
+.confetti { position: absolute; inset: 0; pointer-events: none; }
+.confetti i {
+  position: absolute;
+  top: 42%;
+  left: 50%;
+  width: 8px;
+  height: 12px;
+  border-radius: 2px;
+  background: var(--color);
+  animation: burst .94s calc(.56s + var(--delay)) cubic-bezier(.15, .72, .4, 1) both;
+}
+
+@keyframes grow { from { transform: translateY(34px) scale(.36); } to { transform: translateY(0) scale(1); } }
+@keyframes reveal { from { transform: rotateY(0deg); } to { transform: rotateY(180deg); } }
+@keyframes message { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; } }
+@keyframes burst {
+  0% { opacity: 0; transform: rotate(var(--angle)) translateX(15px) scale(.4); }
+  28% { opacity: 1; }
+  76% { opacity: 1; }
+  100% { opacity: 0; transform: rotate(var(--angle)) translateX(var(--distance)) rotate(var(--spin)); }
+}
+
+@media (max-width: 480px) { .grid { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+@media (prefers-reduced-motion: reduce) {
+  .cardStage, .flipper, .message, .confetti i { animation: none; }
+  .flipper { transform: rotateY(180deg); }
+  .confetti { display: none; }
+  .card { transition: none; }
+}

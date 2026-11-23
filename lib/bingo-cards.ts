@@ -11,4 +11,5 @@ export type BingoCardGame = {
   date: string;
   taken: number[];
   draw: { index: number; points: number } | null;
+  opened: { index: number; points: number }[];
 };
