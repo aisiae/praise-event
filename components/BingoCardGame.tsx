@@ -20,10 +20,11 @@ function Confetti() {
   </div>;
 }
 
-export default function BingoCardGame({ game, blocked, onRefresh, mobilePreview, onTogglePreview }: {
+export default function BingoCardGame({ game, blocked, onRefresh, mode, mobilePreview, onTogglePreview }: {
   game: CardGame;
   blocked: boolean;
   onRefresh: () => Promise<void>;
+  mode: "live" | "test";
   mobilePreview: boolean;
   onTogglePreview: () => void;
 }) {
@@ -31,13 +32,14 @@ export default function BingoCardGame({ game, blocked, onRefresh, mobilePreview,
   const title = useRef<HTMLHeadingElement>(null);
   const resultTitle = useRef<HTMLHeadingElement>(null);
   const inFlight = useRef(false);
-  const [open, setOpen] = useState(game.taken.length < bingoCardCount);
+  const [open, setOpen] = useState(game.taken.length < bingoCardCount && (mode === "test" || !game.opened.length));
   const [updated, setUpdated] = useState<CardGame | null>(null);
   const [revealed, setRevealed] = useState<Draw | null>(null);
   const [pending, setPending] = useState<number | null>(null);
   const [error, setError] = useState("");
   const cardState = updated && updated.taken.length > game.taken.length ? updated : game;
   const remaining = bingoCardCount - cardState.taken.length;
+  const playedToday = mode === "live" && cardState.opened.length > 0;
   const hasPoints = !!revealed?.points;
 
   useEffect(() => {
@@ -68,7 +70,7 @@ export default function BingoCardGame({ game, blocked, onRefresh, mobilePreview,
     setPending(index);
     setError("");
     try {
-      const response = await fetch("/api/bingo-test/participate?mode=test", {
+      const response = await fetch(`/api/bingo-test/participate?mode=${mode}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "flipCard", date: game.date, index }),
@@ -90,10 +92,10 @@ export default function BingoCardGame({ game, blocked, onRefresh, mobilePreview,
 
   return (
     <div className={styles.entry}>
-      <button type="button" className="button secondary" disabled={blocked} onClick={() => setOpen(true)}>
-        행운의 카드 뒤집기
+      <button type="button" className={`button ${styles.launch}`} disabled={blocked} onClick={() => { if (playedToday) setRevealed(cardState.opened[0]); setOpen(true); }}>
+        <span aria-hidden="true" className={styles.emblem}>✦</span><span>{playedToday ? "오늘의 카드 결과" : "행운의 카드 뒤집기"}</span>
       </button>
-      <span>남은 카드 {remaining}장</span>
+      <span>{playedToday ? "오늘 참여 완료" : `남은 카드 ${remaining}장`}</span>
       <dialog ref={dialog} className={styles.dialog} data-mobile-preview={mobilePreview} aria-labelledby="bingo-card-title" onCancel={event => {
         event.preventDefault();
         close();
@@ -101,7 +103,7 @@ export default function BingoCardGame({ game, blocked, onRefresh, mobilePreview,
         <div className={styles.header}>
           <div>
             <h2 id="bingo-card-title" ref={title} tabIndex={-1}>행운의 카드 뒤집기</h2>
-            <p>테스트에서는 카드를 여러 장 뒤집을 수 있어요.</p>
+            <p>{mode === "live" ? "한국시간 기준 하루에 한 장만 뒤집을 수 있어요." : "테스트에서는 카드를 여러 장 뒤집을 수 있어요."}</p>
           </div>
           <div className={styles.controls}>
             <button type="button" className={`button secondary ${styles.previewToggle}`} aria-pressed={mobilePreview} onClick={onTogglePreview}>
@@ -125,8 +127,8 @@ export default function BingoCardGame({ game, blocked, onRefresh, mobilePreview,
           </div>
           <div className={styles.message}>
             <h3 ref={resultTitle} tabIndex={-1}>{hasPoints ? `축하해요! 보너스 +${revealed.points}점` : "앗, 이번엔 꽝이에요!"}</h3>
-            <p>{hasPoints ? "획득한 점수가 테스트 빙고에 더해졌어요." : "아쉽지만 내일 다시 도전해 보세요."}</p>
-            {remaining > 0
+            <p>{hasPoints ? "획득한 점수가 빙고 점수에 더해졌어요." : "아쉽지만 내일 다시 도전해 보세요."}</p>
+            {mode === "test" && remaining > 0
               ? <button type="button" className="button primary" onClick={() => { setRevealed(null); title.current?.focus(); }}>다른 카드 뒤집기</button>
               : <button type="button" className="button primary" onClick={close}>빙고로 돌아가기</button>}
           </div>
@@ -143,7 +145,7 @@ export default function BingoCardGame({ game, blocked, onRefresh, mobilePreview,
               return (
                 <button key={index} type="button" className={styles.card}
                   data-state={own ? "own" : taken ? "taken" : "closed"}
-                  disabled={taken || pending !== null}
+                  disabled={taken || playedToday || pending !== null}
                   aria-label={own ? `${index + 1}번째 카드, ${own.points ? `보너스 ${own.points}점` : "꽝"}` :
                     taken ? `${index + 1}번째 카드, 선택 완료` : `${index + 1}번째 카드 뒤집기`}
                   onClick={() => void flip(index)}>

@@ -184,3 +184,24 @@
   .confetti { display: none; }
   .card { transition: none; }
 }
+
+.entry .launch {
+  display: inline-flex; align-items: center; gap: 11px;
+  min-height: 54px; padding: 8px 18px 8px 10px;
+  border: 1px solid #ddb977; border-radius: 16px;
+  background: linear-gradient(120deg,#37205c,#773e9c 65%,#512875);
+  color: #fff5db; box-shadow: 0 5px 12px #4b286738; font-weight: 850;
+}
+.emblem {
+  display:grid; place-items:center; width:32px; height:37px; border:1px solid #f2d795;
+  border-radius:7px; background:#4c296e; color:#ffdf8c; transform:rotate(-8deg);
+  box-shadow:0 2px 5px #25153980;
+}
+.entry .launch:hover:not(:disabled) { background:linear-gradient(120deg,#492670,#8e4daf,#60318a); }
+:global(.bingo-card-intro) {
+  margin-top:17px; padding:12px 14px; max-width:550px; position:relative; z-index:1;
+  color:#fff4d9; border:1px solid #f5dc9a66; border-radius:14px; background:#2b174dba;
+}
+:global(.bingo-card-intro) p { margin:3px 0 8px; }
+:global(.bingo-card-intro) ul { display:flex; flex-wrap:wrap; gap:5px; margin:0; padding:0; list-style:none; }
+:global(.bingo-card-intro) li { padding:3px 8px; border-radius:25px; background:#ffffff21; color:#fff8e5; font-size:.79rem; }
