@@ -2,6 +2,66 @@ export const questions = [
  ['짜장면과 짬뽕 중 무엇을 고를까요?','짜장면','짬뽕'],['오늘 쉬는 시간에 하고 싶은 것은?','커피 한 잔','달콤한 간식'],['여행을 간다면?','바다','산'],['주말에 더 끌리는 것은?','집에서 쉬기','밖으로 나가기'],['야식 하나만 고른다면?','치킨','피자'],['좋아하는 계절은?','봄','가을'],['아침에 더 필요한 것은?','커피','30분 더 자기'],['쉬는 날 보고 싶은 것은?','영화','드라마'],['간식의 취향은?','달콤한 맛','짭짤한 맛'],['여행 계획은?','꼼꼼하게','즉흥적으로'],['좋아하는 동물은?','강아지','고양이'],['퇴근 후 하고 싶은 것은?','산책하기','소파에 눕기'],['빵과 밥 중 하나를 고른다면?','빵','밥'],['선호하는 날씨는?','맑은 날','비 오는 날'],['여행할 때 선호하는 곳은?','도시','자연'],['가고 싶은 곳은?','카페','맛집'],['더 좋아하는 간식은?','아이스크림','과자'],['취미로 고른다면?','음악 듣기','책 읽기'],['주말 아침은?','늦잠','일찍 시작'],['맛있는 국물은?','떡볶이','어묵'],['선호하는 휴식은?','혼자 조용히','친구와 수다'],['음식 취향은?','매운 맛','순한 맛'],['여행지의 이동 수단은?','자동차','기차'],['영화 장르는?','코미디','추리'],['선물로 고른다면?','꽃','초콜릿'],['여름에 고른다면?','시원한 수박','차가운 아이스크림'],['무엇을 더 좋아하나요?','노래 부르기','노래 듣기'],['일상의 작은 기쁨은?','맛있는 식사','푹 자기'],['풍경을 고른다면?','일출','노을'],['오늘 나에게 주는 선물은?','좋아하는 간식','여유로운 시간'],
 ] as const;
 export type BingoCell={kind:"question"|"bonus"; questionIndex?:number; label:string; opened:boolean; openedBy?:"question"|"bonus"; answer?:string; bonusDay?:number};
+export const bingoAnswerCellNote = "질문에 답할 때마다 빈 칸 하나가 열립니다. 해당 질문 칸이 보너스로 먼저 열렸다면 다른 빈 칸이 열립니다. 36칸이 모두 열리면 이후에는 참여 일수만 기록됩니다.";
+const previousAnswerCellNote = "이미 보너스로 열린 질문에 답해도 칸 점수는 중복되지 않습니다.";
+
+export function updateBingoAnswerCellNote(notes: string) {
+  return notes.replace(previousAnswerCellNote, bingoAnswerCellNote);
+}
+
+export function openBingoAnswerCell(cells: BingoCell[], questionIndex: number, answer: string) {
+  const assignedCell = cells.find(cell => cell.questionIndex === questionIndex);
+  if (!assignedCell) throw new Error("빙고판을 확인해 주세요.");
+
+  let answerCell = assignedCell;
+  if (assignedCell.openedBy === "bonus") {
+    // Move the answer to a vacant question cell while keeping the opened bonus in place.
+    // Prefer the last upcoming question so the next question can keep its original cell.
+    const vacantCell = cells
+      .filter(cell => !cell.opened)
+      .sort((a, b) => (b.questionIndex ?? -1) - (a.questionIndex ?? -1))[0];
+    if (!vacantCell) {
+      assignedCell.answer = answer;
+      return;
+    }
+
+    answerCell = vacantCell;
+    const nextQuestion = answerCell.questionIndex;
+    const nextLabel = answerCell.label;
+    answerCell.kind = "question";
+    answerCell.questionIndex = questionIndex;
+    answerCell.label = assignedCell.label;
+    assignedCell.label = nextLabel;
+    delete assignedCell.answer;
+    if (nextQuestion === undefined) {
+      assignedCell.kind = "bonus";
+      delete assignedCell.questionIndex;
+    } else {
+      assignedCell.questionIndex = nextQuestion;
+    }
+  }
+
+  answerCell.answer = answer;
+  answerCell.opened = true;
+  answerCell.openedBy = "question";
+}
+
+export function restoreBingoAnswerCells(cells: BingoCell[], participation: number) {
+  if (cells.every(cell => cell.opened)) return cells;
+  const missedAnswers = cells.flatMap(cell =>
+    cell.openedBy === "bonus" && cell.questionIndex !== undefined &&
+    cell.questionIndex < participation && cell.answer
+      ? [{ questionIndex: cell.questionIndex, answer: cell.answer }]
+      : []
+  ).sort((a, b) => a.questionIndex - b.questionIndex);
+  if (!missedAnswers.length) return cells;
+
+  const restored = cells.map(cell => ({ ...cell }));
+  for (const { questionIndex, answer } of missedAnswers) {
+    openBingoAnswerCell(restored, questionIndex, answer);
+  }
+  return restored;
+}
 export function lines(cells:BingoCell[]) { const sets:number[][]=[]; for(let i=0;i<6;i++){ sets.push(Array.from({length:6},(_,j)=>i*6+j)); sets.push(Array.from({length:6},(_,j)=>j*6+i)); } sets.push([0,7,14,21,28,35],[5,10,15,20,25,30]); return sets.filter(row=>row.every(i=>cells[i]?.opened)); }
 export function totals(cells:BingoCell[]) {const question=cells.filter(c=>c.openedBy==='question').length, bonus=cells.filter(c=>c.openedBy==='bonus').length, count=lines(cells).length; return {question,bonus,opened:question+bonus,lines:count,score:question+bonus+count*5+(question+bonus===36?10:0)};}
 export type BingoQuestion=[string,string,string];
@@ -16,5 +76,5 @@ export type BingoCelebration={newLines:number;linePoints:number;gainedPoints:num
 export function bingoLineReward(before:ReturnType<typeof totals>,cells:BingoCell[]):BingoCelebration|null{const after=totals(cells),newLines=after.lines-before.lines;if(newLines<=0)return null;return {newLines,linePoints:newLines*5,gainedPoints:after.score-before.score,totalScore:after.score,totalLines:after.lines,cellPoints:after.opened-before.opened,completionPoints:before.opened<36&&after.opened===36?10:0}}
 
 export function defaultOperationalBingoConfig(source:BingoConfig=defaultBingoConfig()):BingoConfig {
- return {...source,status:"draft",eventName:"오늘의 선택 빙고",intro:"하루 한 번, 오늘의 취향을 고르고 나만의 빙고판을 완성해 보세요.",startDate:"",endDate:"",allowRepeatTest:false,detailSchedule:"참여 일정은 추후 안내합니다.",detailAttendance:"한국시간 하루 1회 질문에 답하면 한 칸이 열립니다. 누적 참여 3일마다 축하 팝업의 확인 버튼을 눌러 보너스를 받으세요.",detailNotes:"휴무일 미참여에 별도 감점은 없습니다. 이미 보너스로 열린 질문에 답해도 칸 점수는 중복되지 않습니다. 상품 지급 기준과 동점 처리 기준은 관리자 안내에 따릅니다.",detailPrizes:"열린 칸 1점, 빙고 한 줄 5점, 전체 완성 10점. 최종 누적 점수와 상품 구성에 따라 종료 후 지급 대상을 검토합니다.",version:0};
+ return {...source,status:"draft",eventName:"오늘의 선택 빙고",intro:"하루 한 번, 오늘의 취향을 고르고 나만의 빙고판을 완성해 보세요.",startDate:"",endDate:"",allowRepeatTest:false,detailSchedule:"참여 일정은 추후 안내합니다.",detailAttendance:"한국시간 하루 1회 질문에 답하면 한 칸이 열립니다. 누적 참여 3일마다 축하 팝업의 확인 버튼을 눌러 보너스를 받으세요.",detailNotes:"휴무일 미참여에 별도 감점은 없습니다. "+bingoAnswerCellNote+" 상품 지급 기준과 동점 처리 기준은 관리자 안내에 따릅니다.",detailPrizes:"열린 칸 1점, 빙고 한 줄 5점, 전체 완성 10점. 최종 누적 점수와 상품 구성에 따라 종료 후 지급 대상을 검토합니다.",version:0};
 }
