@@ -20,10 +20,12 @@ function Confetti() {
   </div>;
 }
 
-export default function BingoCardGame({ game, blocked, onRefresh }: {
+export default function BingoCardGame({ game, blocked, onRefresh, mobilePreview, onTogglePreview }: {
   game: CardGame;
   blocked: boolean;
   onRefresh: () => Promise<void>;
+  mobilePreview: boolean;
+  onTogglePreview: () => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const title = useRef<HTMLHeadingElement>(null);
@@ -92,7 +94,7 @@ export default function BingoCardGame({ game, blocked, onRefresh }: {
         행운의 카드 뒤집기
       </button>
       <span>남은 카드 {remaining}장</span>
-      <dialog ref={dialog} className={styles.dialog} aria-labelledby="bingo-card-title" onCancel={event => {
+      <dialog ref={dialog} className={styles.dialog} data-mobile-preview={mobilePreview} aria-labelledby="bingo-card-title" onCancel={event => {
         event.preventDefault();
         close();
       }}>
@@ -101,9 +103,12 @@ export default function BingoCardGame({ game, blocked, onRefresh }: {
             <h2 id="bingo-card-title" ref={title} tabIndex={-1}>행운의 카드 뒤집기</h2>
             <p>테스트에서는 카드를 여러 장 뒤집을 수 있어요.</p>
           </div>
-          <button type="button" className="button secondary" disabled={pending !== null} onClick={close}>
-            닫기
-          </button>
+          <div className={styles.controls}>
+            <button type="button" className={`button secondary ${styles.previewToggle}`} aria-pressed={mobilePreview} onClick={onTogglePreview}>
+              {mobilePreview ? "PC 화면 보기" : "모바일 화면 보기"}
+            </button>
+            <button type="button" className="button secondary" disabled={pending !== null} onClick={close}>닫기</button>
+          </div>
         </div>
         {revealed ? <div className={styles.reveal} key={revealed.index} data-win={hasPoints}>
           {hasPoints && <Confetti/>}

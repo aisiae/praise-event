@@ -16,6 +16,7 @@
   margin: auto;
   padding: clamp(16px, 4vw, 30px);
   overflow: auto;
+  container-type: inline-size;
   background: linear-gradient(155deg, #fbf3fd, #fff8ec);
   color: #2f2146;
   border: 1px solid #dcc9ef;
@@ -167,7 +168,16 @@
   100% { opacity: 0; transform: rotate(var(--angle)) translateX(var(--distance)) rotate(var(--spin)); }
 }
 
-@media (max-width: 480px) { .grid { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+.dialog[data-mobile-preview="true"] { width: min(376px, calc(100% - 24px)); }
+.controls { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.controls button { white-space: nowrap; }
+@container (max-width: 440px) {
+  .header { flex-wrap: wrap; }
+  .controls { justify-content: flex-start; }
+  .grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .cardStage { width: min(134px, 44cqi); }
+}
+@media (max-width: 480px) { .previewToggle { display: none; } }
 @media (prefers-reduced-motion: reduce) {
   .cardStage, .flipper, .message, .confetti i { animation: none; }
   .flipper { transform: rotateY(180deg); }
