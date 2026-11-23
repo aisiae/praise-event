@@ -20,13 +20,11 @@ function Confetti() {
   </div>;
 }
 
-export default function BingoCardGame({ game, blocked, onRefresh, mode, mobilePreview, onTogglePreview }: {
+export default function BingoCardGame({ game, blocked, onRefresh, mode }: {
   game: CardGame;
   blocked: boolean;
   onRefresh: () => Promise<void>;
   mode: "live" | "test";
-  mobilePreview: boolean;
-  onTogglePreview: () => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const title = useRef<HTMLHeadingElement>(null);
@@ -96,7 +94,7 @@ export default function BingoCardGame({ game, blocked, onRefresh, mode, mobilePr
         <span aria-hidden="true" className={styles.emblem}>✦</span><span>{playedToday ? "오늘의 카드 결과" : "행운의 카드 뒤집기"}</span>
       </button>
       <span>{playedToday ? "오늘 참여 완료" : `남은 카드 ${remaining}장`}</span>
-      <dialog ref={dialog} className={styles.dialog} data-mobile-preview={mobilePreview} aria-labelledby="bingo-card-title" onCancel={event => {
+      <dialog ref={dialog} className={styles.dialog} aria-labelledby="bingo-card-title" onCancel={event => {
         event.preventDefault();
         close();
       }}>
@@ -106,9 +104,6 @@ export default function BingoCardGame({ game, blocked, onRefresh, mode, mobilePr
             <p>{mode === "live" ? "한국시간 기준 하루에 한 장만 뒤집을 수 있어요." : "테스트에서는 카드를 여러 장 뒤집을 수 있어요."}</p>
           </div>
           <div className={styles.controls}>
-            <button type="button" className={`button secondary ${styles.previewToggle}`} aria-pressed={mobilePreview} onClick={onTogglePreview}>
-              {mobilePreview ? "PC 화면 보기" : "모바일 화면 보기"}
-            </button>
             <button type="button" className="button secondary" disabled={pending !== null} onClick={close}>닫기</button>
           </div>
         </div>
