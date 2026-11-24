@@ -2,16 +2,11 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { fillTargets, slots, stages, stageFor, type Garden } from "@/lib/wish-garden";
+import WishScene from "./WishScene";
 import styles from "./WishGarden.module.css";
 
 const empty: Garden = { signedIn: false, trees: [], mine: null, targets: [], watered: [] };
 const start = { x: 518, y: 744 };
-const directions = [
-  { key: "ArrowUp", x: 0, y: -1, symbol: "↑", label: "위" },
-  { key: "ArrowLeft", x: -1, y: 0, symbol: "←", label: "왼쪽" },
-  { key: "ArrowDown", x: 0, y: 1, symbol: "↓", label: "아래" },
-  { key: "ArrowRight", x: 1, y: 0, symbol: "→", label: "오른쪽" },
-];
 const demoTrees = [{ slot: 34, count: 2 }, { slot: 37, count: 5 }, { slot: 28, count: 8 }, { slot: 19, count: 12 }];
 
 export default function WishGarden() {
@@ -24,8 +19,6 @@ export default function WishGarden() {
   const [plantSlot, setPlantSlot] = useState<number | null>(null);
   const [position, setPosition] = useState(start);
   const [splash, setSplash] = useState<number | null>(null);
-  const pressed = useRef(new Set<string>());
-  const viewport = useRef<HTMLDivElement>(null);
   const splashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const active = garden.signedIn || demo;
 
@@ -51,46 +44,6 @@ export default function WishGarden() {
     return () => { controller.abort(); clearInterval(timer); };
   }, [garden.signedIn, demo, busy]);
 
-  useEffect(() => {
-    if (!active) return;
-    const held = pressed.current;
-    const clearKeys = () => held.clear();
-    const down = (event: KeyboardEvent) => {
-      if (event.target instanceof HTMLElement && event.target.closest("input, textarea, select, [contenteditable]")) return;
-      if (directions.some(direction => direction.key === event.key)) {
-        event.preventDefault();
-        held.add(event.key);
-      }
-    };
-    const up = (event: KeyboardEvent) => held.delete(event.key);
-    const move = () => {
-      const delta = directions.filter(direction => held.has(direction.key)).reduce(
-        (point, direction) => ({ x: point.x + direction.x, y: point.y + direction.y }), { x: 0, y: 0 },
-      );
-      if (!delta.x && !delta.y) return;
-      const speed = 5 / Math.hypot(delta.x, delta.y);
-      setPosition(point => ({
-        x: Math.min(1010, Math.max(30, point.x + delta.x * speed)),
-        y: Math.min(765, Math.max(186, point.y + delta.y * speed)),
-      }));
-    };
-    const interval = setInterval(move, 24);
-    window.addEventListener("keydown", down);
-    window.addEventListener("keyup", up);
-    window.addEventListener("blur", clearKeys);
-    return () => {
-      clearInterval(interval);
-      clearKeys();
-      window.removeEventListener("keydown", down);
-      window.removeEventListener("keyup", up);
-      window.removeEventListener("blur", clearKeys);
-    };
-  }, [active]);
-
-  useEffect(() => {
-    const view = viewport.current;
-    view?.scrollTo(position.x - view.clientWidth / 2, position.y - view.clientHeight / 2);
-  }, [position, active]);
   useEffect(() => () => { if (splashTimer.current) clearTimeout(splashTimer.current); }, []);
 
   const treesBySlot = new Map(garden.trees.map(tree => [tree.slot, tree]));
@@ -151,6 +104,13 @@ export default function WishGarden() {
     });
   }
 
+  function sceneAction(event: React.KeyboardEvent<HTMLElement>) {
+    if (event.code !== "KeyE" || event.repeat || !active || busy || plantSlot !== null ||
+        (event.target instanceof HTMLElement && event.target.closest("input,textarea"))) return;
+    if (!garden.mine && closeSlot >= 0 && !closeTree) setPlantSlot(closeSlot);
+    else if (canWater && !alreadyWatered) water();
+  }
+
   function nextDemoDay() {
     if (!garden.mine) return;
     setGarden({
@@ -160,7 +120,7 @@ export default function WishGarden() {
     setNote("다음 테스트 날이에요. 다시 물을 줄 수 있어요.");
   }
 
-  return <main className={styles.garden}>
+  return <main className={styles.garden} onKeyDown={sceneAction}>
     <header className={styles.header}>
       <div><p>12월 이벤트 테스트</p><h1>2027 소원나무 마당</h1></div>
       {active && <button disabled={busy} onClick={() => void run(async () => {
@@ -191,52 +151,15 @@ export default function WishGarden() {
       {demo && garden.mine && <button onClick={nextDemoDay}>다음 날 체험</button>}
     </div>}
     <div className={styles.scene}>
-      <div ref={viewport} className={styles.viewport} aria-label="소원나무 마당">
-        <div className={styles.world}>
-          <div className={styles.path} aria-hidden="true" />
-          <div className={styles.temple} aria-hidden="true"><div className={styles.roof} /><div className={styles.doors}>✦</div></div>
-          <div className={styles.lights} aria-hidden="true">{Array.from({ length: 28 }, (_, i) => <i key={i} />)}</div>
-          <div className={styles.wreath} aria-hidden="true">✦</div>
-          <div className={styles.gate} aria-hidden="true">소원나무 마당</div>
-          {slots.map((point, slot) => {
-            const tree = treesBySlot.get(slot);
-            const mine = garden.mine?.slot === slot;
-            const target = garden.targets.includes(slot) && !garden.watered.includes(slot);
-            return <div key={slot} className={styles.plot} style={{ left: point.x, top: point.y, zIndex: Math.round(point.y) }}>
-              {tree ? <>
-                {mine ? <div className={styles.wish}>{garden.mine?.wish}</div> : target && <div className={styles.target} aria-label="오늘의 물주기 대상">💧</div>}
-                <div className={styles.tree} data-stage={stageFor(tree.count)} data-splash={splash === slot} role="img" aria-label={`${mine ? "내 나무" : "익명 나무"} · ${stages[stageFor(tree.count)]} · 물주기 ${tree.count}회`}>
-                  <i /><i /><i /><b>✦</b><em>● ✦ ●</em>
-                </div>
-                {splash === slot && <div className={styles.splash} aria-hidden="true">💧✧</div>}
-              </> : <div className={styles.emptyPlot} aria-hidden="true" />}
-            </div>;
-          })}
-          {active && <div className={styles.avatar} aria-label="내 캐릭터" style={{ left: position.x, top: position.y, zIndex: Math.round(position.y) }}>
-            <i /><b /><em />
-          </div>}
-        </div>
-      </div>
+      <WishScene active={active} blocked={plantSlot !== null} garden={garden} position={position} onMove={setPosition} splash={splash} />
       {active && <>
-        <div className={styles.pad} aria-label="터치 방향키">
-          {directions.map(direction => <button key={direction.key} aria-label={direction.label}
-            onPointerDown={event => {
-              event.currentTarget.setPointerCapture(event.pointerId);
-              pressed.current.add(direction.key);
-              setPosition(point => ({ x: Math.min(1010, Math.max(30, point.x + direction.x * 5)), y: Math.min(765, Math.max(186, point.y + direction.y * 5)) }));
-            }}
-            onLostPointerCapture={() => pressed.current.delete(direction.key)}
-            onPointerUp={() => pressed.current.delete(direction.key)}
-            onPointerCancel={() => pressed.current.delete(direction.key)}
-          >{direction.symbol}</button>)}
-        </div>
         <div className={styles.action}>
-          {!garden.mine && closeSlot >= 0 && !closeTree && <button onClick={() => setPlantSlot(closeSlot)}>여기에 소원나무 심기</button>}
-          {canWater && <button disabled={alreadyWatered || busy} onClick={water}>{alreadyWatered ? "오늘 물주기 완료" : "💧 물주기"}</button>}
+          {!garden.mine && closeSlot >= 0 && !closeTree && <button onClick={() => setPlantSlot(closeSlot)}>여기에 소원나무 심기 <kbd>E</kbd></button>}
+          {canWater && <button disabled={alreadyWatered || busy} onClick={water}>{alreadyWatered ? "오늘 물주기 완료" : <>💧 물주기 <kbd>E</kbd></>}</button>}
         </div>
       </>}
     </div>
-    <p className={styles.instructions}>{active ? "방향키나 화면 버튼으로 이동하세요. 나무 가까이에서 심기와 물주기를 할 수 있어요." : "직원 로그인 또는 조작 체험으로 마당에 들어갈 수 있어요."}</p>
+    <p className={styles.instructions}>{active ? "PC는 마당 클릭 후 마우스로 둘러보고, 방향키나 WASD로 이동해요. E로 심기·물주기, Esc로 마우스를 해제해요. 모바일은 왼쪽 조이스틱으로 이동하고 마당을 밀어 둘러보세요." : "직원 로그인 또는 조작 체험으로 마당에 들어갈 수 있어요."}</p>
     <div role="status" className={styles.status}>{note}</div>
     {plantSlot !== null && <div className={styles.shade}>
       <form role="dialog" aria-modal="true" aria-labelledby="wish-title" onSubmit={plant}>
