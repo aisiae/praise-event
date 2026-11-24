@@ -11,7 +11,7 @@ const event = () => getAdminDb().collection("wishGardens").doc("christmas-2026-t
 const sessions = () => event().collection("sessions");
 
 type Plot = Tree & { owner: string; wish: string };
-type Visit = { date: string; targets: number[]; watered: number[] };
+type Visit = { date: string; resetVersion?: string; targets: number[]; watered: number[] };
 
 async function employeeId(request: NextRequest) {
   const token = request.cookies.get(cookie)?.value;
@@ -19,10 +19,10 @@ async function employeeId(request: NextRequest) {
   const session = (await sessions().doc(hash(token)).get()).data();
   if (!session || session.expiresAt <= Date.now()) return null;
   const person = await getAdminDb().collection("employees").doc(session.employeeId).get();
-  return person.data()?.status === "재직" ? person.id : null;
+  return person.data()?.status === "재직" ? { id: person.id, name: String(person.data()?.name ?? "") } : null;
 }
 
-async function garden(id: string, action?: "plant" | "water" | "decorate", slot?: number, wish?: string): Promise<Garden> {
+async function garden({ id, name }: { id: string; name: string }, action?: "plant" | "water" | "decorate", slot?: number, wish?: string): Promise<Garden> {
   const root = event();
   const visitRef = root.collection("visits").doc(id);
   return getAdminDb().runTransaction(async tx => {
@@ -30,8 +30,10 @@ async function garden(id: string, action?: "plant" | "water" | "decorate", slot?
     const plots = (board.data()?.plots ?? []) as Plot[];
     let own = plots.find(plot => plot.owner === id);
     const date = todaySeoul();
+    const resetVersion = board.data()?.resetVersion ?? "";
     const old = visitDoc.data() as Visit | undefined;
-    const visit: Visit = old?.date === date ? old : { date, targets: [], watered: [] };
+    const visit: Visit = old?.date === date && (old.resetVersion ?? "") === resetVersion
+      ? old : { date, resetVersion, targets: [], watered: [] };
 
     if (action === "plant") {
       if (own) throw new Error("이미 내 소원나무를 심었어요.");
@@ -39,7 +41,7 @@ async function garden(id: string, action?: "plant" | "water" | "decorate", slot?
       own = { slot: slot!, count: 0, owner: id, wish: wish! };
       plots.push(own);
     }
-    if (own) visit.targets = fillTargets(plots, own.slot, visit.targets, randomInt);
+    if (own) visit.targets = fillTargets(plots, own.slot, visit.targets.filter(target => plots.some(plot => plot.slot === target && plot.slot !== own.slot)), randomInt);
     if (action === "water" || action === "decorate") {
       const plot = plots.find(item => item.slot === slot);
       if (!own || !plot) throw new Error("나무를 확인해 주세요.");
@@ -60,6 +62,7 @@ async function garden(id: string, action?: "plant" | "water" | "decorate", slot?
     if (own && (action || JSON.stringify(old) !== JSON.stringify(visit))) tx.set(visitRef, visit);
     return {
       signedIn: true,
+      name,
       trees: plots.map(({ slot, count, ownWater = 0, friendWater = 0, ornamentsGiven }) => ({ slot, count, ownWater, friendWater, ...(slot === own?.slot && { ornamentsGiven: ornamentsGiven ?? 0 }) })),
       mine: own ? { slot: own.slot, wish: own.wish } : null,
       targets: visit.targets,
@@ -87,7 +90,11 @@ async function adminStatus(request: NextRequest) {
       ]);
       const plots = (board.data()?.plots ?? []) as Plot[];
       const byOwner = new Map(plots.map(plot => [plot.owner, plot]));
-      const watered = new Map(visits.docs.map(visit => [visit.id, (visit.data() as Visit).watered]));
+      const resetVersion = board.data()?.resetVersion ?? "";
+      const watered = new Map(visits.docs.flatMap(doc => {
+        const visit = doc.data() as Visit;
+        return (visit.resetVersion ?? "") === resetVersion ? [[doc.id, visit.watered] as const] : [];
+      }));
       const rows = employees.docs.map(employee => {
         const plot = byOwner.get(employee.id);
         const todaySlots = watered.get(employee.id) ?? [];
@@ -128,7 +135,7 @@ export async function POST(request: NextRequest) {
       const person = (await getAdminDb().collection("employees").doc(id).get()).data();
       if (person?.status !== "재직" || normalizeEmployeeName(person.name) !== name) throw new Error("이름과 사번을 확인해 주세요.");
       const token = randomBytes(32).toString("hex");
-      const data = await garden(id);
+      const data = await garden({ id, name: String(person.name) });
       await sessions().doc(hash(token)).set({ employeeId: id, expiresAt: Date.now() + 86400000 });
       const response = NextResponse.json(data);
       response.cookies.set(cookie, token, { httpOnly: true, secure: request.nextUrl.protocol === "https:", sameSite: "lax", path: "/", maxAge: 86400 });

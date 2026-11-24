@@ -1,6 +1,7 @@
 export type Tree = { slot: number; count: number; ownWater?: number; friendWater?: number; ornamentsGiven?: number };
 export type Garden = {
   signedIn: boolean;
+  name?: string;
   trees: Tree[];
   mine: { slot: number; wish: string } | null;
   targets: number[];

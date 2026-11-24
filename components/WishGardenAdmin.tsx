@@ -104,7 +104,30 @@ export default function WishGardenAdmin() {
   const [tab, setTab] = useState<"settings" | "status" | "prizes" | "results">("settings");
   const [mobile, setMobile] = useState(false);
   const [notice, setNotice] = useState("");
+  const [resetting, setResetting] = useState(false);
   const url = typeof window === "undefined" ? path : new URL(path, window.location.origin).href;
+
+  async function resetTest() {
+    if (resetting || !window.confirm("소원나무 테스트의 모든 소원, 나무, 참여 기록과 테스트 결과를 초기화할까요?")) return;
+    setResetting(true);
+    setNotice("");
+    try {
+      const user = getFirebaseAuth().currentUser;
+      if (!user) throw new Error("관리자로 로그인한 뒤 다시 시도해 주세요.");
+      const response = await fetch("/api/wish-tree-test/admin", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${await user.getIdToken()}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "reset" }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.reset) throw new Error(result.error || "테스트를 초기화하지 못했어요.");
+      setNotice("테스트 초기화 완료. 나무 0그루부터 다시 시작할 수 있어요.");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "테스트를 초기화하지 못했어요.");
+    } finally {
+      setResetting(false);
+    }
+  }
 
   return <section className="bingo-test embedded-bingo">
     <nav className="admin-tabs" aria-label="소원나무 관리자 메뉴">
@@ -117,7 +140,7 @@ export default function WishGardenAdmin() {
       <button type="button" className="button secondary" aria-expanded={mobile} onClick={() => setMobile(value => !value)}>
         {mobile ? "모바일 화면 닫기" : "모바일 화면 보기"}
       </button>
-      {mobile && <iframe title="소원나무 마당 모바일 미리보기" src={path} style={{ display: "block", margin: "12px auto", width: "min(390px, 100%)", height: "min(780px, 80dvh)", border: "1px solid #e3d4f0", borderRadius: 18 }} />}
+      {mobile && <iframe title="2027 소원 나무 정원 모바일 미리보기" src={path} style={{ display: "block", margin: "12px auto", width: "min(390px, 100%)", height: "min(780px, 80dvh)", border: "1px solid #e3d4f0", borderRadius: 18 }} />}
       <div className="bingo-share-box">
         <h3>공유 테스트 링크</h3>
         <p>직원 이름과 사번으로 로그인하면 같은 테스트 마당에 입장합니다. 로그인 없이 조작 체험을 선택하면 성장 단계를 연속으로 확인할 수 있습니다.</p>
@@ -132,6 +155,7 @@ export default function WishGardenAdmin() {
             }
           }}>공유 테스트 링크 복사</button>
           <a className="button secondary" href={path} target="_blank" rel="noreferrer">테스트 화면 열기 ↗</a>
+          <button type="button" className="button secondary" disabled={resetting} onClick={resetTest}>{resetting ? "초기화 중…" : "테스트 초기화"}</button>
         </div>
         {notice && <p role="status">{notice}</p>}
       </div>

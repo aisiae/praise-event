@@ -16,7 +16,7 @@ canvas:active { cursor:grabbing; }
 .santa { font-size:21px; }
 h1,h2,p { margin:0; }
 h1 { color:#6ee7b7; font-size:16px; font-weight:900; letter-spacing:-.035em; }
-.heading p,.modal-heading p { color:#cbd5e1; font-size:11px; }
+.heading p,.modal-heading p { color:#cbd5e1; font-size:11px; overflow-wrap:anywhere; }
 .heading button { margin-left:auto; white-space:nowrap; }
 .stats { margin-top:8px; padding-top:8px; border-top:1px solid #ffffff1a; display:grid; grid-template-columns:1fr 1fr; gap:8px; font-size:12px; }
 .stats div,.growth > div:first-child { display:flex; align-items:center; justify-content:space-between; gap:5px; }
@@ -48,7 +48,21 @@ h1 { color:#6ee7b7; font-size:16px; font-weight:900; letter-spacing:-.035em; }
 .toast { display:block; border-radius:16px; padding:9px 14px; margin-top:6px; font-size:12px; }
 .modal { width:min(425px,calc(100% - 32px)); max-height:calc(100% - 24px); padding:22px; border-radius:24px; overflow:auto; }
 .modal::backdrop { background:#0009; backdrop-filter:blur(4px); }
+#entry { position:fixed; inset:0; margin:auto; height:fit-content; }
 #entry::backdrop { background:#02061755; backdrop-filter:none; }
+#planted-count { color:#fcd34d; }
+#celebration { overflow:visible; backdrop-filter:none; background:#111d32f0; }
+#celebration .modal-heading { margin-bottom:0; position:relative; z-index:1; }
+#fireworks { position:fixed; inset:0; overflow:hidden; pointer-events:none; }
+#fireworks span { position:absolute; width:6px; height:6px; border-radius:50%; background:var(--color); box-shadow:0 0 10px var(--color); opacity:0; animation:firework-burst 1.2s ease-out var(--delay) both; }
+@keyframes firework-burst {
+    0% { opacity:0; transform:scale(.3); }
+    15% { opacity:1; }
+    100% { opacity:0; transform:translate(var(--x),var(--y)) scale(.45); }
+}
+@media (prefers-reduced-motion:reduce) {
+    #fireworks { display:none; }
+}
 .modal-heading { gap:11px; margin-bottom:15px; }
 .modal-heading h2 { font-size:17px; font-weight:900; }
 .modal-heading p { margin-top:2px; }

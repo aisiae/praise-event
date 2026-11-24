@@ -7,6 +7,7 @@ const byId = id => document.getElementById(id);
 const entry = byId('entry');
 const plantDialog = byId('modal-plant');
 const detailDialog = byId('modal-tree-detail');
+const celebration = byId('celebration');
 const growthCells = byId('growth-cells');
 const nearButton = byId('near-action');
 const maxPreview = byId('max-preview');
@@ -61,6 +62,7 @@ function actionFor(slot) {
         if (garden.watered.includes(slot)) return { label: '오늘 물주기 완료 ✓' };
         return { action: 'water', label: '💧 소원 나무에 물주기', color: 'sky' };
     }
+    if (!garden.mine) return { label: '먼저 내 소원 나무를 심어 주세요' };
     if (garden.watered.includes(slot)) return { label: '오늘 장식 달기 완료 ✓' };
     if (!garden.targets.includes(slot)) return { label: '오늘의 장식 대상이 아닙니다' };
     return { action: 'decorate', label: '🎁 장식 달아주기', color: 'amber' };
@@ -69,31 +71,32 @@ function actionFor(slot) {
 function showNearby(slot) {
     nearby = slot;
     const action = slot < 0 || !canPlay || preview ? null : actionFor(slot);
-    const label = action?.action ? action.label : '';
+    const label = action?.label ?? '';
     if (label === lastActionLabel) return;
     lastActionLabel = label;
     nearButton.hidden = !label;
+    nearButton.disabled = !action?.action;
     nearButton.textContent = label;
-    nearButton.className = 'action ' + (action?.color ?? '');
+    nearButton.className = 'action ' + (action?.color ?? 'quiet');
 }
 
 function syncView() {
     const own = treeAt(garden.mine?.slot);
     const shownGrowth = preview ? maximum : growthOf(own);
     const remaining = garden.targets.filter(slot => !garden.watered.includes(slot)).length;
-    byId('player-label').textContent = mode === 'demo'
-        ? '조작 체험 · 나무 자리 ' + village.capacity + '개'
-        : '직원 참여 · 나무 자리 ' + village.capacity + '개';
-    byId('my-tree-status').textContent = own ? (growthOf(own) === maximum ? '성장 완료' : '성장 중') : '심기 가능';
+    byId('player-label').textContent = mode === 'demo' ? '조작 체험' : garden.name + ' 님';
+    byId('planted-count').textContent = garden.trees.length + ' / ' + village.capacity + '그루';
+    byId('my-tree-status').textContent = own ? (growthOf(own) === maximum ? '성장 완료' : growthOf(own) + '단 성장') : '심기 가능';
     byId('ornament-count').textContent = remaining + ' / ' + ornamentLimit + '회';
     byId('growth').hidden = !own && !preview;
     const points = (own?.ownWater ?? 0) * 3 + (own?.ornamentsGiven ?? 0) + (own?.friendWater ?? 0);
-    byId('growth-label').textContent = shownGrowth + ' / ' + maximum + '칸' + (own && !preview ? ' · ' + points + '점' : '');
+    byId('growth-label').textContent = shownGrowth + ' / ' + maximum + '단' + (own && !preview ? ' · ' + points + '점' : '');
     growthCells.setAttribute('aria-valuenow', String(shownGrowth));
     Array.from(growthCells.children).forEach((cell, index) => cell.classList.toggle('filled', index < shownGrowth));
     byId('leave').hidden = false;
     byId('leave').textContent = mode === 'demo' ? '직원 로그인' : '로그아웃';
     byId('next-day').hidden = mode !== 'demo' || !own || preview;
+    byId('find-target').hidden = !own || !remaining || preview;
     maxPreview.hidden = false;
     maxPreview.textContent = preview ? '최대 성장 미리보기 닫기' : '23일 최대 성장 미리보기';
     maxPreview.setAttribute('aria-pressed', String(preview));
@@ -102,13 +105,13 @@ function syncView() {
     const trees = preview
         ? [...garden.trees.filter(tree => tree.slot !== previewSlot), { slot: previewSlot, ownWater: maximum, friendWater: 40 }]
         : garden.trees;
-    village.updateTrees(trees, garden.mine);
+    village.updateTrees(trees, garden.mine, preview ? [] : garden.targets.filter(slot => !garden.watered.includes(slot)));
     showNearby(nearby);
     if (detailDialog.open) renderDetail();
 }
 
 function setSceneEnabled() {
-    canPlay = ![entry, plantDialog, detailDialog].some(dialog => dialog.open);
+    canPlay = ![entry, plantDialog, detailDialog, celebration].some(dialog => dialog.open);
     village.setEnabled(canPlay);
     showNearby(nearby);
 }
@@ -143,13 +146,33 @@ function renderDetail() {
     const mine = selected === garden.mine?.slot;
     const action = actionFor(selected);
     byId('detail-owner').textContent = mine ? '내 소원 나무' : '동료의 소원 나무';
-    byId('detail-stats').textContent = '성장 ' + growthOf(tree) + '/' + maximum + '칸 · 장식 ' + (tree.friendWater ?? 0) + '개';
+    byId('detail-stats').textContent = '성장 ' + growthOf(tree) + '/' + maximum + '단 · 장식 ' + (tree.friendWater ?? 0) + '개';
     byId('detail-wish').textContent = mine ? garden.mine.wish : '';
     byId('detail-wish').hidden = !mine;
     const button = byId('detail-action');
     button.textContent = action.label;
     button.className = 'action ' + (action.color ?? 'quiet');
     button.disabled = !action.action || busy;
+}
+
+function celebrateGrowth(slot) {
+    if (detailDialog.open) detailDialog.close();
+    village.focus(slot);
+    const fireworks = byId('fireworks');
+    fireworks.replaceChildren();
+    const colors = ['#facc15', '#fda4af', '#6ee7b7', '#93c5fd', '#f0abfc'];
+    for (let burst = 0; burst < 5; burst++) {
+        const x = [20, 76, 48, 11, 87][burst];
+        const y = [30, 24, 46, 65, 60][burst];
+        for (let ray = 0; ray < 18; ray++) {
+            const particle = document.createElement('span');
+            const angle = ray / 18 * Math.PI * 2;
+            const distance = 45 + ray % 4 * 20;
+            particle.style.cssText = `left:${x}%;top:${y}%;--x:${Math.cos(angle) * distance}px;--y:${Math.sin(angle) * distance}px;--color:${colors[(burst + ray) % colors.length]};--delay:${burst * .36}s`;
+            fireworks.append(particle);
+        }
+    }
+    showDialog(celebration);
 }
 
 async function send(action) {
@@ -187,6 +210,7 @@ function tryAction(slot) {
         pick(slot);
     } else if (action === 'water' || action === 'decorate') {
         void run(async () => {
+            const before = growthOf(treeAt(slot));
             if (mode === 'live') {
                 garden = await send({ action, slot });
             } else {
@@ -204,8 +228,12 @@ function tryAction(slot) {
                     })
                 };
             }
+            if (action === 'water' && before === maximum - 1 && growthOf(treeAt(slot)) === maximum) {
+                celebrateGrowth(slot);
+                return;
+            }
             toast(action === 'water'
-                ? '💧 물을 줬어요. 내 나무 성장 ' + growthOf(treeAt(slot)) + '/' + maximum + '칸'
+                ? '💧 물을 줬어요. 내 나무 성장 ' + growthOf(treeAt(slot)) + '/' + maximum + '단'
                 : '🎁 동료 나무에 장식을 달았어요!');
         });
     }
@@ -220,20 +248,17 @@ try {
     byId('loading-error').hidden = false;
     byId('loading-error').textContent = '3D 정원을 불러오지 못했어요. 페이지를 새로고침하거나 WebGL을 지원하는 브라우저로 열어 주세요.';
     byId('login-submit').disabled = byId('demo').disabled = true;
+    entry.close();
     entry.showModal();
     entry.addEventListener('cancel', event => event.preventDefault());
 }
 
 if (village) {
+    entry.close();
+    showDialog(entry);
+    byId('login-submit').disabled = byId('demo').disabled = false;
     syncView();
-    setSceneEnabled();
-    let restoreSession = true;
-    void send().then(data => {
-        if (!restoreSession || !data.signedIn) return;
-        mode = 'live';
-        garden = data;
-        syncView();
-    }).catch(() => {});
+    entry.addEventListener('cancel', event => event.preventDefault());
 
     setInterval(async () => {
         if (mode !== 'live' || document.hidden || busy) return;
@@ -249,14 +274,13 @@ if (village) {
                 garden = { ...empty(), trees: sampleTrees };
                 preview = false;
                 syncView();
-                toast('로그인 시간이 만료되었어요.');
+                showDialog(entry);
             }
         } catch { /* Keep the last shared garden during a temporary connection failure. */ }
     }, 8000);
 
     byId('leave').addEventListener('click', () => {
         if (mode === 'demo') {
-            restoreSession = false;
             byId('loading-error').hidden = true;
             showDialog(entry);
         } else {
@@ -265,6 +289,7 @@ if (village) {
                 mode = 'demo';
                 garden = { ...empty(), trees: sampleTrees };
                 preview = false;
+                showDialog(entry);
             });
         }
     });
@@ -287,7 +312,6 @@ if (village) {
         const wish = byId('wish-input').value.trim();
         if (!wish) return;
         const slot = selected;
-        restoreSession = false;
         void run(async () => {
             garden = mode === 'live'
                 ? await send({ action: 'plant', slot, wish })
@@ -298,7 +322,7 @@ if (village) {
         });
     });
 
-    [entry, plantDialog, detailDialog].forEach(dialog => dialog.addEventListener('close', setSceneEnabled));
+    [entry, plantDialog, detailDialog, celebration].forEach(dialog => dialog.addEventListener('close', setSceneEnabled));
     document.querySelectorAll('[data-close]').forEach(button => {
         button.addEventListener('click', () => button.closest('dialog').close());
     });
@@ -307,6 +331,12 @@ if (village) {
     byId('btn-find-mine').addEventListener('click', () => {
         if (garden.mine) village.focus(garden.mine.slot);
         else toast('눈밭에 있는 빈 화단을 눌러 내 나무를 심어 보세요.');
+    });
+    byId('find-target').addEventListener('click', () => {
+        const slot = garden.targets.find(target => !garden.watered.includes(target));
+        if (slot === undefined) return;
+        village.focus(slot);
+        pick(slot);
     });
     byId('next-day').addEventListener('click', () => {
         if (busy || !garden.mine || mode !== 'demo') return;
@@ -325,7 +355,7 @@ if (village) {
 
     window.addEventListener('keydown', event => {
         if (event.target instanceof HTMLElement && event.target.matches('input, textarea')) return;
-        if (event.code === 'KeyE' && !event.repeat && !entry.open && !plantDialog.open) {
+        if (event.code === 'KeyE' && !event.repeat && (canPlay || detailDialog.open)) {
             event.preventDefault();
             tryAction(detailDialog.open ? selected : nearby);
         }

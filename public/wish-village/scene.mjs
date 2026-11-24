@@ -5,6 +5,7 @@ export function createVillage(container, { onPick, onNear }) {
 
     const treeSlots = [];
     const plantedTrees = new Map();
+    let decorationPlots = new Set();
     const moveKeys = { up: false, down: false, left: false, right: false };
     const stick = { x: 0, z: 0 };
     let enabled = false;
@@ -644,53 +645,44 @@ export function createVillage(container, { onPick, onNear }) {
      * ============================================================================
      */
 
-    function createStylizedPineTree(scaleMultiplier = 1, ornamentCount = 0, isMine = false) {
+    function createStylizedPineTree(growth, ornamentCount, isMine) {
         const treeGroup = new THREE.Group();
-    
-        // 1. 나무 기둥 (원통형 + 뿌리 디테일)
-        const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a2c18, roughness: 0.85 });
-        const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.28, 1.1, 16), trunkMat);
-        trunk.position.y = 0.55;
+        const scale = .66 + growth * .014;
+        const layers = Math.max(1, growth);
+        const step = Math.min(.66, .24 + 1.6 / layers);
+        const trunk = new THREE.Mesh(new THREE.CylinderGeometry(.14, .24, .78, 16),
+            new THREE.MeshStandardMaterial({ color: 0x4a2c18, roughness: .85 }));
+        trunk.position.y = .39;
         trunk.castShadow = true;
         treeGroup.add(trunk);
-    
-        // 2. 다층 풍성한 잎사귀 (4단 고폴리곤 원뿔 + 끝단 눈 디테일)
-        const foliageColors = [0x1b4332, 0x2d6a4f, 0x40916c, 0x52b788];
-        const layers = 4;
-        const ornamentsAnchor = new THREE.Group();
-    
-        const ornamentPalette = [0xef4444, 0xfbbf24, 0x38bdf8, 0xf472b6, 0xa78bfa, 0xfb923c];
-    
-        const perLayer = [16, 14, 12, 10];
-        for (let i = 0; i < layers; i++) {
-            const progress = i / layers;
-            const radius = 1.25 * (1 - progress * 0.58);
-            const height = 1.35 * (1 - progress * 0.25);
-            const yPos = 1.25 + i * 0.78;
-    
-            const layerMat = new THREE.MeshStandardMaterial({
-                color: foliageColors[i],
-                roughness: 0.75
-            });
-            // 24각 세그먼트로 매끄럽고 풍성한 폴리곤 표현
-            const cone = new THREE.Mesh(new THREE.ConeGeometry(radius, height, 24), layerMat);
-            cone.position.y = yPos;
-            cone.castShadow = true;
-            cone.receiveShadow = true;
-            treeGroup.add(cone);
-    
-            // Alternate the shapes as ornaments are earned, keeping the original pine silhouette.
-            for (let index = i; index < Math.min(ornamentCount, 40); index += layers) {
-                const theta = (Math.floor(index / layers) / perLayer[i]) * Math.PI * 2 + i * 1.8;
-                const ornament = createOrnament(index % 5, ornamentPalette[index % ornamentPalette.length]);
-                ornament.position.set(Math.cos(theta) * radius * .89, yPos - height * .29, Math.sin(theta) * radius * .89);
-                ornament.rotation.y = Math.PI / 2 - theta;
-                ornamentsAnchor.add(ornament);
+
+        const foliageColors = [0x245640, 0x327458, 0x438c69, 0x58a982];
+        const palette = [0xef4444, 0xfbbf24, 0x38bdf8, 0xf472b6, 0xa78bfa, 0xfb923c];
+        let top = 0;
+        for (let tier = 0; tier < layers; tier++) {
+            const taper = 1 - tier / layers;
+            const radius = (.48 + growth * .039) * (.16 + taper * .84);
+            const base = .56 + tier * step;
+            const height = tier === layers - 1 ? Math.max(.45, radius * 1.8) : step + .13;
+            const upperRadius = tier === layers - 1 ? 0 : radius * .77;
+            const mesh = new THREE.Mesh(new THREE.CylinderGeometry(upperRadius, radius, height, 24),
+                new THREE.MeshStandardMaterial({ color: foliageColors[tier % foliageColors.length], roughness: .75 }));
+            mesh.name = growth ? 'growth-tier' : 'seedling';
+            mesh.position.y = base + height / 2;
+            mesh.castShadow = mesh.receiveShadow = true;
+            treeGroup.add(mesh);
+            top = base + height;
+
+            // Start low and spread added decorations around the visible branches.
+            for (let index = tier; index < Math.min(ornamentCount, 40); index += layers) {
+                const angle = index * 2.399963;
+                const ornament = createOrnament(index % 5, palette[index % palette.length]);
+                ornament.position.set(Math.cos(angle) * radius * .94, base + .12, Math.sin(angle) * radius * .94);
+                ornament.rotation.y = Math.PI / 2 - angle;
+                treeGroup.add(ornament);
             }
         }
-        treeGroup.add(ornamentsAnchor);
-    
-        // 3. 나무 꼭대기 빛나는 별 장식 (성장 레벨 2 이상 또는 내 나무일 때 강조)
+
         const starMat = new THREE.MeshStandardMaterial({
             color: 0xfef08a,
             emissive: 0xfacc15,
@@ -698,7 +690,7 @@ export function createVillage(container, { onPick, onNear }) {
             roughness: 0.2
         });
         const star = new THREE.Mesh(new THREE.OctahedronGeometry(0.24, 0), starMat);
-        star.position.y = 4.25;
+        star.position.y = top + .17;
         star.userData.isStar = true;
         treeGroup.add(star);
     
@@ -713,12 +705,13 @@ export function createVillage(container, { onPick, onNear }) {
                 opacity: 0.85
             });
             const aura = new THREE.Mesh(auraGeo, auraMat);
-            aura.position.y = 0.12 / scaleMultiplier;
-            aura.scale.setScalar(1 / scaleMultiplier);
+            aura.position.y = 0.12 / scale;
+            aura.scale.setScalar(1 / scale);
             treeGroup.add(aura);
         }
     
-        treeGroup.scale.setScalar(scaleMultiplier);
+        treeGroup.scale.setScalar(scale);
+        treeGroup.userData.height = top + .35;
         return treeGroup;
     }
 
@@ -962,7 +955,13 @@ export function createVillage(container, { onPick, onNear }) {
         return sprite;
     }
 
-    function updateTrees(trees, mine) {
+    function updateTrees(trees, mine, targets) {
+        decorationPlots = new Set(targets);
+        treeSlots.forEach((slot, index) => {
+            const target = decorationPlots.has(index);
+            slot.ringMesh.material.color.setHex(target ? 0xfbbf24 : 0x34d399);
+            slot.ringMesh.material.opacity = index === highlighted ? .85 : target ? .68 : 0;
+        });
         const retained = new Set(trees.map(tree => tree.slot));
         for (const [index, tree] of plantedTrees) {
             if (retained.has(index)) continue;
@@ -983,20 +982,21 @@ export function createVillage(container, { onPick, onNear }) {
                 disposeMesh(old.meshGroup);
                 disposeMesh(old.hitMesh);
             }
-            const scale = .55 + growth * .72 / 23;
-            const meshGroup = createStylizedPineTree(scale, ornaments, isMine);
+            const meshGroup = createStylizedPineTree(growth, ornaments, isMine);
+            const scale = meshGroup.scale.x;
+            const height = meshGroup.userData.height * scale;
             meshGroup.position.set(slot.x, .08, slot.z);
             if (wish) {
                 const label = createWishLabel(wish);
-                label.position.y = 4.55 + label.scale.y / (2 * scale);
+                label.position.y = meshGroup.userData.height + label.scale.y / (2 * scale);
                 label.scale.divideScalar(scale);
                 meshGroup.add(label);
             }
             const hitMesh = new THREE.Mesh(
-                new THREE.CylinderGeometry(1.25 * scale, 1.42 * scale, 4.5 * scale, 16),
+                new THREE.CylinderGeometry(.42 * scale, (1.05 + growth * .028) * scale, height, 16),
                 new THREE.MeshBasicMaterial({ visible: false })
             );
-            hitMesh.position.set(slot.x, 2.2 * scale, slot.z);
+            hitMesh.position.set(slot.x, height / 2, slot.z);
             hitMesh.userData.plot = tree.slot;
             scene.add(meshGroup, hitMesh);
             plantedTrees.set(tree.slot, { meshGroup, hitMesh, growth, ornaments, isMine, wish });
@@ -1011,7 +1011,15 @@ export function createVillage(container, { onPick, onNear }) {
 
     function nearbySlot() {
         if (!enabled) return -1;
-        return treeSlots.findIndex(slot => Math.hypot(slot.x - player.position.x, slot.z - player.position.z) < 2.2);
+        let closest = -1;
+        let distance = 2.4;
+        treeSlots.forEach((slot, index) => {
+            const candidate = Math.hypot(slot.x - player.position.x, slot.z - player.position.z);
+            if (candidate >= distance) return;
+            distance = candidate;
+            closest = index;
+        });
+        return closest;
     }
 
     const ray = new THREE.Raycaster();
@@ -1030,7 +1038,7 @@ export function createVillage(container, { onPick, onNear }) {
     let highlighted = -1;
     function highlight(slot) {
         if (slot === highlighted) return;
-        if (highlighted >= 0) treeSlots[highlighted].ringMesh.material.opacity = 0;
+        if (highlighted >= 0) treeSlots[highlighted].ringMesh.material.opacity = decorationPlots.has(highlighted) ? .68 : 0;
         highlighted = slot;
         if (slot >= 0) treeSlots[slot].ringMesh.material.opacity = .85;
     }
@@ -1210,7 +1218,7 @@ export function createVillage(container, { onPick, onNear }) {
             const plot = treeSlots[slot];
             if (!plot) return;
             player.position.set(plot.x, 0, Math.min(22, plot.z + 1.8));
-            cameraZoom = 14;
+            cameraZoom = Math.max(14, (plantedTrees.get(slot)?.meshGroup.userData.height ?? 0) * 3.2);
         },
     };
 }

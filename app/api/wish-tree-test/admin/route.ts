@@ -1,4 +1,4 @@
-import { randomInt } from "node:crypto";
+import { randomInt, randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { getAdminDb } from "@/lib/firebase-admin";
@@ -44,6 +44,13 @@ export async function POST(request: NextRequest) {
   if (!await authorized(request)) return bad("관리자 로그인이 필요해요.", 403);
   try {
     const body = await request.json();
+    if (body.action === "reset") {
+      const batch = getAdminDb().batch();
+      batch.set(root(), { plots: [], resetVersion: randomUUID() }, { merge: true });
+      batch.set(rules(), { result: null }, { merge: true });
+      await batch.commit();
+      return NextResponse.json({ reset: true }, { headers });
+    }
     if (body.action === "save") {
       if (!validPrizes(body.prizes)) return bad("상품명은 서로 다르게 입력하고, 지급액과 전체 인원(최대 40명)을 확인해 주세요.");
       const prizes: WishPrize[] = body.prizes.map(({ name, amount, quantity }: WishPrize) => ({ name: name.trim(), amount, quantity }));

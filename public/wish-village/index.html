@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <title>2026 산타 빌리지 소원 정원</title>
+    <title>2027 소원 나무 정원</title>
     <link rel="stylesheet" href="./village.css">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&amp;display=swap">
     <script type="module" src="./garden.mjs"></script>
@@ -16,8 +16,8 @@
             <div class="heading">
                 <span class="santa" aria-hidden="true">🎅</span>
                 <div>
-                    <h1>2026 산타 빌리지 소원 정원</h1>
-                    <p id="player-label">12월 소원나무 이벤트</p>
+                    <h1>2027 소원 나무 정원</h1>
+                    <p><span id="player-label">12월 소원나무 이벤트</span> · 심은 나무 <strong id="planted-count">0 / 40그루</strong></p>
                 </div>
                 <button id="leave" class="quiet compact" type="button" hidden>나가기</button>
             </div>
@@ -48,13 +48,14 @@
 
     <div class="shortcuts">
         <button id="near-action" class="action emerald" hidden></button>
+        <button id="find-target" class="glass-panel shortcut" hidden>🎁 오늘 장식할 나무 찾기</button>
         <button id="next-day" class="glass-panel shortcut" hidden>다음 테스트 날</button>
         <button id="max-preview" class="glass-panel shortcut" aria-pressed="false" hidden>23일 최대 성장 미리보기</button>
         <button id="btn-find-mine" class="glass-panel shortcut"><span aria-hidden="true">🌟</span> 내 소원 나무 찾기</button>
     </div>
     <div id="toast-container" role="status" aria-live="polite"></div>
 
-    <dialog id="entry" class="glass-panel modal">
+    <dialog id="entry" class="glass-panel modal" open>
         <div class="modal-heading">
             <span class="tile emerald-tile" aria-hidden="true">🎅</span>
             <div><h2>산타 빌리지에 오신 것을 환영해요</h2><p>직원으로 입장해 새해 소원을 심어 보세요.</p></div>
@@ -62,10 +63,18 @@
         <form id="login-form">
             <label>직원 이름 <input required name="name" maxlength="100" autocomplete="name"></label>
             <label>사번 <input required name="employeeId" maxlength="100" autocomplete="off"></label>
-            <button class="action emerald" id="login-submit">직원으로 입장</button>
-            <button class="action quiet" type="button" id="demo">로그인 없이 조작 체험</button>
+            <button class="action emerald" id="login-submit" disabled>직원으로 입장</button>
+            <button class="action quiet" type="button" id="demo" disabled>로그인 없이 조작 체험</button>
         </form>
         <p id="loading-error" class="error" role="alert" hidden></p>
+    </dialog>
+    <dialog id="celebration" class="glass-panel modal" aria-labelledby="celebration-title">
+        <div class="modal-heading">
+            <span class="tile amber-tile" aria-hidden="true">🌟</span>
+            <div><h2 id="celebration-title">소원 나무가 23단까지 자랐어요!</h2><p>정성껏 키운 나무처럼, 2027년의 소원도 꼭 이루어지길 바라요.</p></div>
+            <button class="close" data-close aria-label="닫기" type="button">✕</button>
+        </div>
+        <div id="fireworks" aria-hidden="true"></div>
     </dialog>
 
     <dialog id="modal-plant" class="glass-panel modal">
