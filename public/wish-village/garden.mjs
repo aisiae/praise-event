@@ -213,6 +213,7 @@ function tryAction(slot) {
 
 let village;
 try {
+    await import('./three-r128.min.js');
     village = createVillage(byId('canvas-container'), { onPick: pick, onNear: showNearby });
 } catch (error) {
     console.error(error);
