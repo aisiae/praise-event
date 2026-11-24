@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>2026 산타 빌리지 소원 정원</title>
+    <link rel="stylesheet" href="./village.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&amp;display=swap">
+    <script defer src="./three-r128.min.js"></script>
+    <script type="module" src="./garden.mjs"></script>
+</head>
+<body>
+    <div id="canvas-container" aria-label="북유럽 산타 빌리지 3D 정원"></div>
+
+    <header class="hud">
+        <section class="glass-panel hud-card">
+            <div class="heading">
+                <span class="santa" aria-hidden="true">🎅</span>
+                <div>
+                    <h1>2026 산타 빌리지 소원 정원</h1>
+                    <p id="player-label">12월 소원나무 이벤트</p>
+                </div>
+                <button id="leave" class="quiet compact" type="button" hidden>나가기</button>
+            </div>
+            <div class="stats">
+                <div><span>내 나무</span><strong id="my-tree-status">심기 가능</strong></div>
+                <div><span>오늘 장식</span><strong id="ornament-count">0 / 3회</strong></div>
+            </div>
+            <div id="growth" class="growth" hidden>
+                <div><span>내 나무 성장</span><strong id="growth-label"></strong></div>
+                <div id="growth-cells" class="growth-cells" role="progressbar" aria-label="내 소원나무 성장" aria-valuemin="0" aria-valuemax="23" aria-valuenow="0"></div>
+            </div>
+        </section>
+        <p class="glass-panel help"><span aria-hidden="true">💡</span><span class="desktop-help">방향키 이동 · 마우스 드래그 회전 · 나무/빈터 클릭 · E</span><span class="mobile-help">조이스틱 이동 · 화면 밀어서 회전 · 나무/빈터 터치</span></p>
+    </header>
+
+    <div class="zoom" role="group" aria-label="화면 확대와 축소">
+        <button class="btn-control" id="zoom-in" aria-label="확대">+</button>
+        <button class="btn-control" id="zoom-out" aria-label="축소">−</button>
+    </div>
+
+    <div class="movement" role="group" aria-label="캐릭터 이동">
+        <button class="btn-control" data-direction="up" aria-label="앞으로">↑</button>
+        <button class="btn-control" data-direction="left" aria-label="왼쪽">←</button>
+        <button class="btn-control" data-direction="down" aria-label="뒤로">↓</button>
+        <button class="btn-control" data-direction="right" aria-label="오른쪽">→</button>
+    </div>
+    <div id="joystick" class="glass-panel joystick" aria-label="캐릭터 이동 조이스틱"><span aria-hidden="true">✥</span></div>
+
+    <div class="shortcuts">
+        <button id="near-action" class="action emerald" hidden></button>
+        <button id="next-day" class="glass-panel shortcut" hidden>다음 테스트 날</button>
+        <button id="max-preview" class="glass-panel shortcut" aria-pressed="false" hidden>23일 최대 성장 미리보기</button>
+        <button id="btn-find-mine" class="glass-panel shortcut"><span aria-hidden="true">🌟</span> 내 소원 나무 찾기</button>
+    </div>
+    <div id="toast-container" role="status" aria-live="polite"></div>
+
+    <dialog id="entry" class="glass-panel modal">
+        <div class="modal-heading">
+            <span class="tile emerald-tile" aria-hidden="true">🎅</span>
+            <div><h2>산타 빌리지에 오신 것을 환영해요</h2><p>직원으로 입장해 새해 소원을 심어 보세요.</p></div>
+        </div>
+        <form id="login-form">
+            <label>직원 이름 <input required name="name" maxlength="100" autocomplete="name"></label>
+            <label>사번 <input required name="employeeId" maxlength="100" autocomplete="off"></label>
+            <button class="action emerald" id="login-submit">직원으로 입장</button>
+            <button class="action quiet" type="button" id="demo">로그인 없이 조작 체험</button>
+        </form>
+        <p id="loading-error" class="error" role="alert" hidden></p>
+    </dialog>
+
+    <dialog id="modal-plant" class="glass-panel modal">
+        <div class="modal-heading">
+            <span class="tile emerald-tile" aria-hidden="true">🌱</span>
+            <div><h2>이 자리에 소원 나무 심기</h2><p>새해 소원을 적으면 나만의 나무가 심어집니다.</p></div>
+            <button class="close" data-close aria-label="닫기" type="button">✕</button>
+        </div>
+        <form id="plant-form">
+            <label>나의 2027년 소원 메시지
+                <textarea id="wish-input" rows="3" maxlength="150" required placeholder="2027년에 이루고 싶은 소원을 적어 주세요."></textarea>
+            </label>
+            <div class="modal-buttons">
+                <button class="action quiet" data-close type="button">취소</button>
+                <button class="action emerald">소원 나무 심기 ✨</button>
+            </div>
+            <p class="error" role="alert" hidden></p>
+        </form>
+    </dialog>
+
+    <dialog id="modal-tree-detail" class="glass-panel modal">
+        <div class="modal-heading">
+            <span class="tile amber-tile" aria-hidden="true">🎄</span>
+            <div>
+                <h2 id="detail-owner"></h2>
+                <p id="detail-stats"></p>
+            </div>
+            <button class="close" data-close aria-label="닫기" type="button">✕</button>
+        </div>
+        <p id="detail-wish" class="wish-card" hidden></p>
+        <button id="detail-action" class="action sky"></button>
+        <p class="error" role="alert" hidden></p>
+    </dialog>
+</body>
+</html>
