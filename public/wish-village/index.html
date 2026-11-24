@@ -105,7 +105,17 @@
             <button class="close" data-close aria-label="닫기" type="button">✕</button>
         </div>
         <p id="detail-wish" class="wish-card" hidden></p>
+        <button id="edit-wish" class="action quiet" type="button" hidden>소원 수정</button>
         <button id="detail-action" class="action sky"></button>
+        <form id="edit-wish-form" hidden>
+            <label>수정할 소원
+                <textarea id="edited-wish" rows="4" maxlength="150" required></textarea>
+            </label>
+            <div class="modal-buttons">
+                <button id="cancel-wish-edit" class="action quiet" type="button">취소</button>
+                <button id="save-wish-edit" class="action emerald" type="submit">수정 저장</button>
+            </div>
+        </form>
         <p class="error" role="alert" hidden></p>
     </dialog>
 </body>

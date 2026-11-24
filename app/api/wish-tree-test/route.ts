@@ -22,7 +22,7 @@ async function employeeId(request: NextRequest) {
   return person.data()?.status === "재직" ? { id: person.id, name: String(person.data()?.name ?? "") } : null;
 }
 
-async function garden({ id, name }: { id: string; name: string }, action?: "plant" | "water" | "decorate", slot?: number, wish?: string): Promise<Garden> {
+async function garden({ id, name }: { id: string; name: string }, action?: "plant" | "water" | "decorate" | "edit-wish", slot?: number, wish?: string): Promise<Garden> {
   const root = event();
   const visitRef = root.collection("visits").doc(id);
   return getAdminDb().runTransaction(async tx => {
@@ -40,6 +40,10 @@ async function garden({ id, name }: { id: string; name: string }, action?: "plan
       if (plots.some(plot => plot.slot === slot)) throw new Error("다른 직원이 먼저 심은 자리예요. 새로고침 후 다른 자리를 골라 주세요.");
       own = { slot: slot!, count: 0, owner: id, wish: wish! };
       plots.push(own);
+    }
+    if (action === "edit-wish") {
+      if (!own || own.slot !== slot) throw new Error("내 소원나무에 적은 소원만 수정할 수 있어요.");
+      own.wish = wish!;
     }
     if (own) visit.targets = fillTargets(plots, own.slot, visit.targets.filter(target => plots.some(plot => plot.slot === target && plot.slot !== own.slot)), randomInt);
     if (action === "water" || action === "decorate") {
@@ -152,8 +156,8 @@ export async function POST(request: NextRequest) {
     if (!id) throw new Error("직원 로그인이 필요합니다.");
     const { action, slot } = body;
     const wish = typeof body.wish === "string" ? body.wish.trim() : "";
-    if ((action !== "plant" && action !== "water" && action !== "decorate") || !Number.isInteger(slot) || slot < 0 || slot >= slots.length) throw new Error("나무 자리를 확인해 주세요.");
-    if (action === "plant" && (!wish || wish.length > 150)) throw new Error("소원을 1~150자로 입력해 주세요.");
+    if ((action !== "plant" && action !== "water" && action !== "decorate" && action !== "edit-wish") || !Number.isInteger(slot) || slot < 0 || slot >= slots.length) throw new Error("나무 자리를 확인해 주세요.");
+    if ((action === "plant" || action === "edit-wish") && (!wish || wish.length > 150)) throw new Error("소원을 1~150자로 입력해 주세요.");
     return NextResponse.json(await garden(id, action, slot, wish));
   } catch (error) {
     const message = error instanceof Error && /[가-힣]/.test(error.message) ? error.message : "마당을 저장하지 못했어요. 다시 시도해 주세요.";

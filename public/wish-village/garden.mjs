@@ -8,6 +8,8 @@ const byId = id => document.getElementById(id);
 const entry = byId('entry');
 const plantDialog = byId('modal-plant');
 const detailDialog = byId('modal-tree-detail');
+const editWishForm = byId('edit-wish-form');
+const editedWish = byId('edited-wish');
 const celebration = byId('celebration');
 const growthCells = byId('growth-cells');
 const nearButton = byId('near-action');
@@ -166,12 +168,17 @@ function renderDetail() {
         return;
     }
     const mine = selected === garden.mine?.slot;
+    if (!mine) editWishForm.hidden = true;
+    const editing = !editWishForm.hidden;
     const action = actionFor(selected);
     byId('detail-owner').textContent = mine ? '내 소원 나무' : '동료의 소원 나무';
     byId('detail-stats').textContent = '성장 ' + growthOf(tree) + '/' + maximum + '단 · 장식 ' + (tree.friendWater ?? 0) + '개';
     byId('detail-wish').textContent = mine ? garden.mine.wish : '';
-    byId('detail-wish').hidden = !mine;
+    byId('detail-wish').hidden = !mine || editing;
+    byId('edit-wish').hidden = !mine || editing;
+    byId('edit-wish').disabled = busy;
     const button = byId('detail-action');
+    button.hidden = editing;
     renderActionLabel(button, action);
     button.className = 'action ' + (action.color ?? 'quiet');
     button.disabled = !action.action || busy;
@@ -345,10 +352,54 @@ if (village) {
     });
 
     [entry, plantDialog, detailDialog, celebration].forEach(dialog => dialog.addEventListener('close', setSceneEnabled));
+    detailDialog.addEventListener('close', () => { editWishForm.hidden = true; });
     document.querySelectorAll('[data-close]').forEach(button => {
         button.addEventListener('click', () => button.closest('dialog').close());
     });
     byId('detail-action').addEventListener('click', () => tryAction(selected));
+    byId('edit-wish').addEventListener('click', () => {
+        if (busy || selected !== garden.mine?.slot) return;
+        detailDialog.querySelector('[role="alert"]').hidden = true;
+        editedWish.value = garden.mine.wish;
+        editWishForm.hidden = false;
+        renderDetail();
+        editedWish.focus();
+    });
+    byId('cancel-wish-edit').addEventListener('click', () => {
+        editWishForm.hidden = true;
+        detailDialog.querySelector('[role="alert"]').hidden = true;
+        renderDetail();
+        byId('edit-wish').focus();
+    });
+    editWishForm.addEventListener('submit', event => {
+        event.preventDefault();
+        const slot = selected;
+        if (busy || slot !== garden.mine?.slot) return;
+        const wish = editedWish.value.trim();
+        const error = detailDialog.querySelector('[role="alert"]');
+        error.hidden = true;
+        if (!wish || wish.length > editedWish.maxLength) {
+            error.textContent = '소원을 1~150자로 입력해 주세요.';
+            error.hidden = false;
+            editedWish.focus();
+            return;
+        }
+        const save = byId('save-wish-edit');
+        const cancel = byId('cancel-wish-edit');
+        save.disabled = cancel.disabled = true;
+        void run(async () => {
+            try {
+                garden = mode === 'live'
+                    ? await send({ action: 'edit-wish', slot, wish })
+                    : { ...garden, mine: { ...garden.mine, wish } };
+                editWishForm.hidden = true;
+                renderDetail();
+                detailDialog.querySelector('.close').focus();
+            } finally {
+                save.disabled = cancel.disabled = false;
+            }
+        });
+    });
     nearButton.addEventListener('click', () => tryAction(nearby));
     byId('btn-find-mine').addEventListener('click', () => {
         if (garden.mine) village.focus(garden.mine.slot);
@@ -377,7 +428,7 @@ if (village) {
 
     window.addEventListener('keydown', event => {
         if (event.target instanceof HTMLElement && event.target.matches('input, textarea')) return;
-        if (event.code === 'KeyR' && !event.repeat && !event.ctrlKey && !event.metaKey && !event.altKey && (canPlay || detailDialog.open)) {
+        if (event.code === 'KeyR' && !event.repeat && !event.ctrlKey && !event.metaKey && !event.altKey && (canPlay || (detailDialog.open && editWishForm.hidden))) {
             event.preventDefault();
             tryAction(detailDialog.open ? selected : nearby);
         }
