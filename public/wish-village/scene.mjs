@@ -648,56 +648,67 @@ export function createVillage(container, { onPick, onNear }) {
     function createStylizedPineTree(growth, ornamentCount, isMine) {
         const treeGroup = new THREE.Group();
         const scale = .66 + growth * .014;
-        const layers = Math.max(1, growth);
-        const step = Math.min(.63, .18 + 1.3 / layers);
-        const trunk = new THREE.Mesh(new THREE.CylinderGeometry(.14, .24, .78, 16),
-            new THREE.MeshStandardMaterial({ color: 0x4a2c18, roughness: .85 }));
-        trunk.position.y = .39;
+        // Four days of growth fill out each branch whorl. The sixth opens on day 21.
+        const layers = Math.max(1, Math.ceil(growth / 4));
+        const canopyHeight = .65 + growth * .20;
+        const step = canopyHeight / (layers + .38);
+        const trunkHeight = .46 + growth * .015;
+        const trunk = new THREE.Mesh(new THREE.CylinderGeometry(.13 + growth * .002, .19 + growth * .004, trunkHeight + .18, 9),
+            new THREE.MeshStandardMaterial({ color: 0x56402a, roughness: .9, flatShading: true }));
+        trunk.position.y = (trunkHeight + .18) / 2;
         trunk.castShadow = true;
         treeGroup.add(trunk);
 
         const palette = [0xef4444, 0xfbbf24, 0x38bdf8, 0xf472b6, 0xa78bfa, 0xfb923c];
-        const lowerGreen = new THREE.Color(0x235c45);
-        const upperGreen = new THREE.Color(0x4c9975);
-        let top = 0;
+        const lowerGreen = new THREE.Color(0x41612b);
+        const upperGreen = new THREE.Color(0x80a643);
+        const top = trunkHeight + canopyHeight;
         let widest = 0;
         for (let tier = 0; tier < layers; tier++) {
             const progress = tier / Math.max(1, layers - 1);
-            const spread = .38 + .65 * Math.pow(Math.cos(progress * Math.PI / 2), .76);
-            const radius = (.53 + growth * .049) * spread * (.96 + .04 * Math.cos(tier * 2.3));
-            const base = .56 + tier * step;
+            const spread = 1 - progress * .68;
+            const radius = (.44 + growth * .061) * spread;
+            const base = trunkHeight + tier * step;
             const crown = tier === layers - 1;
-            const height = crown ? Math.max(.44, radius * 1.08) : step + .22;
-            const profile = [[.14, 0], [.86, .03], [1, .21], [.91, .48], [.73, .76], [crown ? .38 : .59, .95], [0, 1]];
-            const geometry = new THREE.LatheGeometry(profile.map(([r, y]) => new THREE.Vector2(r * radius, y * height)), 30);
+            const height = step * (crown ? 1.38 : 1.74);
+            const profile = [[0, .13], [1, .09], [.89, .27], [.58, .65], [crown ? .21 : .37, .91], [0, 1]];
+            const segments = 12;
+            const geometry = new THREE.LatheGeometry(profile.map(([r, y]) => new THREE.Vector2(r * radius, y * height)), segments);
             const positions = geometry.attributes.position;
-            for (let vertex = 0; vertex < positions.count; vertex++) {
-                const x = positions.getX(vertex);
-                const z = positions.getZ(vertex);
-                const y = positions.getY(vertex);
-                const angle = Math.atan2(x, z);
-                const edge = Math.min(1, Math.hypot(x, z) / radius);
-                const branch = Math.cos(angle * 5 + tier * 1.9) * .06 + Math.sin(angle * 3 - tier) * .035;
-                positions.setXYZ(vertex, x * (1 + branch), y + branch * edge * .65, z * (1 + branch));
+            const rotation = tier * Math.PI / 7;
+            for (let slice = 0; slice <= segments; slice++) {
+                const tip = slice % 2 === 0;
+                const angle = slice / segments * Math.PI * 2 + rotation;
+                for (let ring = 0; ring < profile.length; ring++) {
+                    const [width, level] = profile[ring];
+                    const edge = ring === 1 ? 1 : ring === 2 ? .46 : 0;
+                    const distance = radius * width * (1 - edge * (tip ? 0 : .23));
+                    const y = height * (level + edge * (tip ? -.09 : .11));
+                    positions.setXYZ(slice * profile.length + ring, Math.sin(angle) * distance, y, Math.cos(angle) * distance);
+                }
             }
             geometry.computeVertexNormals();
             const mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({
-                color: lowerGreen.clone().lerp(upperGreen, progress * .8 + (tier % 3) * .045),
-                roughness: .84
+                color: lowerGreen.clone().lerp(upperGreen, .2 + progress * .62),
+                roughness: .88,
+                flatShading: true
             }));
             mesh.name = growth ? 'growth-tier' : 'seedling';
             mesh.position.y = base;
             mesh.castShadow = mesh.receiveShadow = true;
             treeGroup.add(mesh);
-            top = base + height;
             widest = Math.max(widest, radius);
 
             // Start low and spread added decorations around the visible branches.
             for (let index = tier; index < Math.min(ornamentCount, 40); index += layers) {
-                const angle = index * 2.399963;
+                const branchIndex = Math.floor(index / layers);
+                const segment = branchIndex * 5 % segments;
+                const row = Math.floor(branchIndex / segments);
+                const angle = rotation + segment * Math.PI / 6 + row * .11;
                 const ornament = createOrnament(index % 5, palette[index % palette.length]);
-                ornament.position.set(Math.cos(angle) * radius * 1.02, base + height * .27, Math.sin(angle) * radius * 1.02);
-                ornament.rotation.y = Math.PI / 2 - angle;
+                const distance = radius * ((segment % 2 ? .85 : .97) - row * .12);
+                ornament.position.set(Math.sin(angle) * distance, base + height * (.20 + row * .14), Math.cos(angle) * distance);
+                ornament.rotation.y = angle;
                 treeGroup.add(ornament);
             }
         }

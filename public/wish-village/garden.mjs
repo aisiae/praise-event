@@ -2,6 +2,7 @@ import { createVillage } from './scene.mjs';
 
 const maximum = 23;
 const ornamentLimit = 3;
+const demoOrnamentLimit = 40;
 const api = '/api/wish-tree-test';
 const byId = id => document.getElementById(id);
 const entry = byId('entry');
@@ -62,10 +63,21 @@ function actionFor(slot) {
         if (garden.watered.includes(slot)) return { label: '오늘 물주기 완료 ✓' };
         return { action: 'water', label: '💧 소원 나무에 물주기', color: 'sky' };
     }
-    if (!garden.mine) return { label: '먼저 내 소원 나무를 심어 주세요' };
-    if (garden.watered.includes(slot)) return { label: '오늘 장식 달기 완료 ✓' };
-    if (!garden.targets.includes(slot)) return { label: '오늘의 장식 대상이 아닙니다' };
+    if (mode === 'demo') {
+        if ((tree.friendWater ?? 0) >= demoOrnamentLimit) return { label: '체험 장식 40개를 채웠어요 ✓' };
+    } else {
+        if (!garden.mine) return { label: '먼저 내 소원 나무를 심어 주세요' };
+        if (garden.watered.includes(slot)) return { label: '오늘 장식 달기 완료 ✓' };
+        if (!garden.targets.includes(slot)) return { label: '오늘의 장식 대상이 아닙니다' };
+    }
     return { action: 'decorate', label: '🎁 장식 달아주기', color: 'amber' };
+}
+
+function decorationSlots() {
+    if (mode === 'demo') {
+        return garden.trees.filter(tree => tree.slot !== garden.mine?.slot && (tree.friendWater ?? 0) < demoOrnamentLimit).map(tree => tree.slot);
+    }
+    return garden.targets.filter(slot => !garden.watered.includes(slot));
 }
 
 function renderActionLabel(button, action) {
@@ -92,11 +104,11 @@ function showNearby(slot) {
 function syncView() {
     const own = treeAt(garden.mine?.slot);
     const shownGrowth = preview ? maximum : growthOf(own);
-    const remaining = garden.targets.filter(slot => !garden.watered.includes(slot)).length;
+    const targets = decorationSlots();
     byId('player-label').textContent = mode === 'demo' ? '조작 체험' : garden.name + ' 님';
     byId('planted-count').textContent = garden.trees.length + ' / ' + village.capacity + '그루';
     byId('my-tree-status').textContent = own ? (growthOf(own) === maximum ? '성장 완료' : growthOf(own) + '단 성장') : '심기 가능';
-    byId('ornament-count').textContent = remaining + ' / ' + ornamentLimit + '회';
+    byId('ornament-count').textContent = mode === 'demo' ? '반복 체험' : targets.length + ' / ' + ornamentLimit + '회';
     byId('growth').hidden = !own && !preview;
     const points = (own?.ownWater ?? 0) * 3 + (own?.ornamentsGiven ?? 0) + (own?.friendWater ?? 0);
     byId('growth-label').textContent = shownGrowth + ' / ' + maximum + '단' + (own && !preview ? ' · ' + points + '점' : '');
@@ -105,7 +117,8 @@ function syncView() {
     byId('leave').hidden = false;
     byId('leave').textContent = mode === 'demo' ? '직원 로그인' : '로그아웃';
     byId('next-day').hidden = mode !== 'demo' || !own || preview;
-    byId('find-target').hidden = !own || !remaining || preview;
+    byId('find-target').hidden = !targets.length || preview;
+    byId('find-target').textContent = mode === 'demo' ? '🎁 장식 체험하기' : '🎁 오늘 장식할 나무 찾기';
     maxPreview.hidden = false;
     maxPreview.textContent = preview ? '최대 성장 미리보기 닫기' : '23일 최대 성장 미리보기';
     maxPreview.setAttribute('aria-pressed', String(preview));
@@ -114,7 +127,7 @@ function syncView() {
     const trees = preview
         ? [...garden.trees.filter(tree => tree.slot !== previewSlot), { slot: previewSlot, ownWater: maximum, friendWater: 40 }]
         : garden.trees;
-    village.updateTrees(trees, garden.mine, preview ? [] : garden.targets.filter(slot => !garden.watered.includes(slot)));
+    village.updateTrees(trees, garden.mine, preview ? [] : targets);
     showNearby(nearby);
     if (detailDialog.open) renderDetail();
 }
@@ -223,16 +236,16 @@ function tryAction(slot) {
             if (mode === 'live') {
                 garden = await send({ action, slot });
             } else {
-                const own = slot === garden.mine.slot;
+                const own = action === 'water';
                 garden = {
-                    ...garden, watered: [...garden.watered, slot],
+                    ...garden, watered: own ? [...garden.watered, slot] : garden.watered,
                     trees: garden.trees.map(tree => {
                         if (tree.slot === slot) return {
                             ...tree,
                             ownWater: (tree.ownWater ?? 0) + Number(own),
                             friendWater: (tree.friendWater ?? 0) + Number(!own)
                         };
-                        if (!own && tree.slot === garden.mine.slot) return { ...tree, ornamentsGiven: (tree.ornamentsGiven ?? 0) + 1 };
+                        if (!own && tree.slot === garden.mine?.slot) return { ...tree, ornamentsGiven: (tree.ornamentsGiven ?? 0) + 1 };
                         return tree;
                     })
                 };
@@ -243,7 +256,7 @@ function tryAction(slot) {
             }
             toast(action === 'water'
                 ? '💧 물을 줬어요. 내 나무 성장 ' + growthOf(treeAt(slot)) + '/' + maximum + '단'
-                : '🎁 동료 나무에 장식을 달았어요!');
+                : '🎁 동료 나무에 장식을 달았어요! · 장식 ' + (treeAt(slot)?.friendWater ?? 0) + '개');
         });
     }
 }
@@ -342,7 +355,7 @@ if (village) {
         else toast('눈밭에 있는 빈 화단을 눌러 내 나무를 심어 보세요.');
     });
     byId('find-target').addEventListener('click', () => {
-        const slot = garden.targets.find(target => !garden.watered.includes(target));
+        const [slot] = decorationSlots();
         if (slot === undefined) return;
         village.focus(slot);
         pick(slot);
