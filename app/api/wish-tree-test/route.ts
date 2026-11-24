@@ -1,8 +1,9 @@
 import { createHash, randomBytes, randomInt } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/auth";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { normalizeEmployeeId, normalizeEmployeeName, todaySeoul } from "@/lib/utils";
-import { fillTargets, slots, type Garden, type Tree } from "@/lib/wish-garden";
+import { fillTargets, slots, type Garden, type Tree, type WishGardenStatus } from "@/lib/wish-garden";
 
 const cookie = "wish-tree-test-session";
 const hash = (token: string) => createHash("sha256").update(token).digest("hex");
@@ -58,7 +59,47 @@ async function garden(id: string, action?: "plant" | "water", slot?: number, wis
   });
 }
 
+async function adminStatus(request: NextRequest) {
+  const headers = { "Cache-Control": "private, no-store" };
+  try {
+    await requireAdmin(request);
+  } catch {
+    return NextResponse.json({ error: "관리자로 로그인한 뒤 확인해 주세요." }, { status: 403, headers });
+  }
+  try {
+    const db = getAdminDb();
+    const today = todaySeoul();
+    const root = event();
+    const data = await db.runTransaction(async tx => {
+      const [board, employees, visits] = await Promise.all([
+        tx.get(root),
+        tx.get(db.collection("employees").where("status", "==", "재직")),
+        tx.get(root.collection("visits").where("date", "==", today)),
+      ]);
+      const plots = (board.data()?.plots ?? []) as Plot[];
+      const byOwner = new Map(plots.map(plot => [plot.owner, plot]));
+      const watered = new Map(visits.docs.map(visit => [visit.id, (visit.data() as Visit).watered]));
+      const rows = employees.docs.map(employee => {
+        const plot = byOwner.get(employee.id);
+        const todaySlots = watered.get(employee.id) ?? [];
+        return {
+          id: employee.id,
+          name: String(employee.data().name ?? ""),
+          tree: plot ? { slot: plot.slot, count: plot.count, wish: plot.wish } : null,
+          wateredOwnToday: !!plot && todaySlots.includes(plot.slot),
+          wateredOthersToday: todaySlots.filter(slot => slot !== plot?.slot).length,
+        };
+      }).sort((a, b) => Number(!!b.tree) - Number(!!a.tree) || a.name.localeCompare(b.name, "ko"));
+      return { today, capacity: slots.length, occupied: plots.length, rows };
+    }, { readOnly: true });
+    return NextResponse.json(data satisfies WishGardenStatus, { headers });
+  } catch {
+    return NextResponse.json({ error: "참여 현황을 불러오지 못했어요. 잠시 후 다시 시도해 주세요." }, { status: 503, headers });
+  }
+}
+
 export async function GET(request: NextRequest) {
+  if (request.nextUrl.searchParams.get("view") === "admin-status") return adminStatus(request);
   try {
     const id = await employeeId(request);
     return NextResponse.json(id ? await garden(id) : { signedIn: false }, { headers: { "Cache-Control": "no-store" } });

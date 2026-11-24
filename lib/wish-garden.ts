@@ -22,3 +22,15 @@ export function fillTargets(trees: Tree[], mine: number, previous: number[], pic
   }
   return targets;
 }
+export type WishGardenStatus = {
+  today: string;
+  capacity: number;
+  occupied: number;
+  rows: {
+    id: string;
+    name: string;
+    tree: (Tree & { wish: string }) | null;
+    wateredOwnToday: boolean;
+    wateredOthersToday: number;
+  }[];
+};
