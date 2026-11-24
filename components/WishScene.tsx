@@ -25,18 +25,26 @@ const directionButtons = [
   { code: "ArrowRight", label: "오른쪽", icon: "→", dx: 1, dz: 0 },
 ];
 
-function pine(mesh: Face[], x: number, z: number, size: number, layers: number) {
+function pine(mesh: Face[], x: number, z: number, size: number, layers: number, detailed = false) {
   box(mesh,x,z,size*.12,size*.12,0,size*.46,"#644437","#87634a");
+  const segments = detailed ? 40 : 8;
+  const rings = detailed ? [.0, .13, .24, .38, .58] : [.0, .22, .58];
   for (let layer = 0; layer < layers; layer++) {
     const radius = size * (.44 - layer * .063), level = size * (.2 + layer * .16);
-    for (let face = 0; face < 8; face++) {
-      const angle = face * Math.PI / 4, next = angle + Math.PI / 4;
-      const point = (a: number, r: number, y: number): Vec => [x + Math.cos(a) * r, y, z + Math.sin(a) * r];
-      const rim = point(angle, radius, level), nextRim = point(next, radius, level);
-      const middle = point(angle, radius * .61, level + size * .22);
-      const nextMiddle = point(next, radius * .61, level + size * .22);
-      mesh.push({ vertices: [rim, nextRim, nextMiddle, middle], color: foliage[face] });
-      mesh.push({ vertices: [middle, nextMiddle, [x, level + size * .58, z]], color: face === 2 || face === 3 ? "#8eb2a0" : foliage[face] });
+    const point = (side: number, height: number): Vec => {
+      const angle = side * Math.PI * 2 / segments;
+      const scallop = detailed ? 1 + Math.cos(angle * 8) * .09 + Math.sin(angle * 13) * .035 : 1;
+      const spread = radius * Math.max(0, 1 - height / .58) * scallop;
+      return [x + Math.cos(angle) * spread, level + size * height, z + Math.sin(angle) * spread];
+    };
+    for (let face = 0; face < segments; face++) {
+      for (let band = 0; band < rings.length - 1; band++) {
+        const low = rings[band], high = rings[band+1];
+        const shade = detailed ? Math.floor((face + band * 1.7) / 5) % foliage.length : face;
+        const vertices = [point(face, low), point(face+1, low), point(face+1, high)];
+        if (band < rings.length - 2) vertices.push(point(face, high));
+        mesh.push({ vertices, color: band === rings.length - 2 && (shade === 2 || shade === 3) ? "#8eb2a0" : foliage[shade] });
+      }
     }
   }
 }
@@ -80,15 +88,17 @@ export default function WishScene({ active, blocked, garden, position, onMove, s
   active: boolean; blocked: boolean; garden: Garden; position: Point; onMove: (point: Point) => void; splash: number | null;
 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
-  const input = useRef({ held: new Set<string>(), yaw: 0, pitch: .23, zoom: 1, drag: -1 });
+  const input = useRef({ held: new Set<string>(), yaw: 0, pitch: .23, zoom: 1, stick: {x:0,y:0}, drag: -1 });
   const current = useRef({active,blocked,garden,position,onMove,splash});
   useEffect(() => { current.current={active,blocked,garden,position,onMove,splash}; }, [active,blocked,garden,position,onMove,splash]);
   useEffect(() => {
     const element = canvas.current!;
     const ctx = element.getContext("2d", {alpha:false})!;
     const controls=input.current;
-    let frame=0, last=0, cachedTrees: Garden["trees"] | null=null, trees: Face[]=[];
-    const clear=()=>{controls.held.clear(); controls.drag=-1;};
+    let frame=0, last=0, cachedTrees: Garden["trees"] | null=null;
+    let plots: Face[] = [];
+    let meshes: { x:number; z:number; near:Face[]; far:Face[] }[] = [];
+    const clear=()=>{controls.held.clear(); controls.drag=-1; controls.stick={x:0,y:0};};
     const down=(event:KeyboardEvent)=>{
       if(!current.current.active||current.current.blocked||!keys.has(event.code)|| (event.target instanceof HTMLElement && event.target.closest("input,textarea,[contenteditable]"))) return;
       controls.held.add(event.code);
@@ -112,8 +122,8 @@ export default function WishScene({ active, blocked, garden, position, onMove, s
       last=time;
       const state=current.current;
       const sign=(positive:string,alternate:string)=>Number(controls.held.has(positive)||controls.held.has(alternate));
-      const side=sign("ArrowRight","KeyD")-sign("ArrowLeft","KeyA");
-      const forward=sign("ArrowUp","KeyW")-sign("ArrowDown","KeyS");
+      const side=sign("ArrowRight","KeyD")-sign("ArrowLeft","KeyA")+controls.stick.x;
+      const forward=sign("ArrowUp","KeyW")-sign("ArrowDown","KeyS")-controls.stick.y;
       const sin=Math.sin(controls.yaw), cos=Math.cos(controls.yaw);
       let {x,y:z}=state.position;
       const moving=state.active&&!state.blocked&&Math.hypot(side,forward)>.06;
@@ -144,11 +154,18 @@ export default function WishScene({ active, blocked, garden, position, onMove, s
       if(cachedTrees!==state.garden.trees){
         cachedTrees=state.garden.trees;
         const bySlot=new Map(cachedTrees.map(tree=>[tree.slot,tree]));
-        trees=[];
+        plots=[];
+        meshes=[];
         slots.forEach(({x,y},slot)=>{
           const tree=bySlot.get(slot);
-          box(trees,x,y,35,27,0,1,"#9eb0b4","#b7c7c8");
-          if(tree) pine(trees,x,y,treeSize(tree),layersFor(tree.ownWater ?? 0));
+          box(plots,x,y,35,27,0,1,"#9eb0b4","#b7c7c8");
+          if (tree) {
+            const near:Face[] = [], far:Face[] = [];
+            const size=treeSize(tree), layers=layersFor(tree.ownWater ?? 0);
+            pine(near,x,y,size,layers,true);
+            pine(far,x,y,size,layers);
+            meshes.push({x,z:y,near,far});
+          }
         });
       }
       const player:Face[]=[];
@@ -161,7 +178,8 @@ export default function WishScene({ active, blocked, garden, position, onMove, s
         box(player,x,z+1,15,13,39,44,"#8e3044","#b84459");
         box(player,x,z+1,5,5,44,48,"#eee8de","#fff4e7");
       }
-      const faces=[...staticMesh,...trees,...player].flatMap(face=>{
+      const trees=meshes.flatMap(mesh=>Math.hypot(mesh.x-cameraX,mesh.z-cameraZ)<270?mesh.near:mesh.far);
+      const faces=[...staticMesh,...plots,...trees,...player].flatMap(face=>{
         const verts=face.vertices.map(transform);
         const clipped:Vec[]=[];
         verts.forEach((a,i)=>{
@@ -196,7 +214,7 @@ export default function WishScene({ active, blocked, garden, position, onMove, s
           ctx.fillStyle=ornaments[(i*17+tree.slot)%ornaments.length];
           ctx.beginPath();ctx.arc(ox,oy,dotsize,0,Math.PI*2);ctx.fill();
         }
-        const label=state.garden.mine?.slot===tree.slot ? state.garden.mine.wish : state.garden.targets.includes(tree.slot)&&!state.garden.watered.includes(tree.slot) ? "💧" : "";
+        const label=state.garden.mine?.slot===tree.slot ? state.garden.mine.wish : state.garden.targets.includes(tree.slot)&&!state.garden.watered.includes(tree.slot) ? "✦" : "";
         const view=transform([plot.x,size*(.86+layers*.16)+9,plot.y]);
         if(view[2]<10)continue;
         const [px,py]=project(view);
@@ -229,6 +247,13 @@ export default function WishScene({ active, blocked, garden, position, onMove, s
   useEffect(()=>{if((blocked||!active)&&document.pointerLockElement===canvas.current)document.exitPointerLock();},[blocked,active]);
 
   const dragPoint = useRef({x:0,y:0});
+  const joystick = useRef({ pointer:-1, x:0, y:0 });
+  function endStick(element: HTMLDivElement) {
+    joystick.current.pointer=-1;
+    input.current.stick={x:0,y:0};
+    element.style.setProperty("--dx","0px");
+    element.style.setProperty("--dy","0px");
+  }
   return <div className={css.surface}>
     <canvas ref={canvas} tabIndex={active?0:-1} aria-label="3D 소원나무 마당. 마우스로 둘러보고 방향키로 이동하세요."
       onClick={event=>{if(active&&matchMedia("(pointer:fine)").matches) {try{void event.currentTarget.requestPointerLock()?.catch(()=>{});}catch{/* Drag remains available. */}}}}
@@ -236,6 +261,24 @@ export default function WishScene({ active, blocked, garden, position, onMove, s
       onLostPointerCapture={()=>{input.current.drag=-1;}}
       onPointerMove={event=>{if(input.current.drag!==event.pointerId||document.pointerLockElement===event.currentTarget)return;input.current.yaw+=(event.clientX-dragPoint.current.x)*.008;input.current.pitch=Math.max(-.12,Math.min(.75,input.current.pitch+(event.clientY-dragPoint.current.y)*.005));dragPoint.current={x:event.clientX,y:event.clientY};}} />
     {active && <>
+      <div className={css.joystick} aria-label="오른쪽 이동 조이스틱" role="group"
+        onPointerDown={event=>{
+          if (blocked || joystick.current.pointer !== -1) return;
+          joystick.current={pointer:event.pointerId,x:event.clientX,y:event.clientY};
+          event.currentTarget.setPointerCapture(event.pointerId);
+        }}
+        onPointerMove={event=>{
+          const origin=joystick.current;
+          if (origin.pointer !== event.pointerId) return;
+          const dx=event.clientX-origin.x, dy=event.clientY-origin.y;
+          const norm=Math.max(24,Math.hypot(dx,dy));
+          input.current.stick={x:dx/norm,y:dy/norm};
+          event.currentTarget.style.setProperty("--dx",dx/norm*24+"px");
+          event.currentTarget.style.setProperty("--dy",dy/norm*24+"px");
+        }}
+        onLostPointerCapture={event=>endStick(event.currentTarget)}>
+        <span aria-hidden="true">✥</span><small>이동</small>
+      </div>
       <div className={css.pad} role="group" aria-label="이동 방향 버튼">
         {directionButtons.map(({code,label,icon,dx,dz}) => <button type="button" key={code} aria-label={label}
           onPointerDown={event=>{

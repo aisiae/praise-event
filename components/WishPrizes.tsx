@@ -55,7 +55,7 @@ export default function WishPrizes({ tab }: { tab: "prizes" | "results" }) {
       if (action === "save") setPrizes(data.prizes);
       else setResult(data.result);
       setConfirmDraw(false);
-      setNotice(action === "save" ? "테스트 상품을 저장했어요." : "테스트 추첨 결과를 저장했어요.");
+      setNotice(action === "save" ? "테스트 상품을 저장했어요." : "테스트 시상 결과를 저장했어요.");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "요청을 처리하지 못했어요.");
     } finally {
@@ -68,11 +68,11 @@ export default function WishPrizes({ tab }: { tab: "prizes" | "results" }) {
   }
 
   return <section className="panel admin-section">
-    <h3>{tab === "prizes" ? "상품 관리" : "테스트 추첨 결과"}</h3>
+    <h3>{tab === "prizes" ? "상품 관리" : "테스트 시상 결과"}</h3>
     {loading && !ready && <p>상품과 결과를 불러오는 중이에요.</p>}
     {!ready && !loading && <button type="button" className="button secondary" onClick={() => { setLoading(true); setNotice(""); setReload(value => value + 1); }}>다시 불러오기</button>}
     {ready && (tab === "prizes" ? <form onSubmit={event => { event.preventDefault(); void submit("save"); }}>
-      <p>목록의 위쪽 등수부터 배정해요. 설정은 테스트 추첨에 사용돼요.</p>
+      <p>목록의 위쪽 등수부터 배정해요. 설정은 테스트 결과 산정에 사용돼요.</p>
       <fieldset disabled={loading} style={{ border: 0, padding: 0, margin: 0 }}>
         <div className="prize-editor">{prizes.map((prize, index) => <div className="prize-row" key={index}>
           <label>상품명<input required maxLength={30} value={prize.name} onChange={event => update(index, { name: event.target.value })} /></label>
@@ -87,18 +87,18 @@ export default function WishPrizes({ tab }: { tab: "prizes" | "results" }) {
         </div>
       </fieldset>
     </form> : <>
-      <p>테스트 나무를 심은 재직 직원 중 중복 없이 뽑아요. 테스트 결과는 이 화면에 저장돼요.</p>
+      <p>테스트 나무를 심은 재직 직원에게 총점이 높은 순서로 상품을 배정해요. 같은 점수는 무작위로 순서를 정하고, 한 사람이 한 번만 선정돼요.</p>
       {confirmDraw ? <div className="actions">
         <button type="button" className="button primary" disabled={loading} onClick={() => void submit("draw")}>새 테스트 결과 저장</button>
         <button type="button" className="button secondary" disabled={loading} onClick={() => setConfirmDraw(false)}>취소</button>
-      </div> : <button type="button" className="button primary" disabled={loading} onClick={() => result ? setConfirmDraw(true) : void submit("draw")}>{result ? "테스트 다시 추첨" : "테스트 추첨"}</button>}
+      </div> : <button type="button" className="button primary" disabled={loading} onClick={() => result ? setConfirmDraw(true) : void submit("draw")}>{result ? "테스트 결과 다시 산정" : "테스트 결과 산정"}</button>}
       {result ? <>
         <p>{new Date(result.drawnAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })} · 대상 {result.eligible}명 중 {result.winners.length}명 · {money(result.winners.reduce((sum, winner) => sum + winner.amount, 0))}</p>
         <div className="table-wrap"><table>
-          <thead><tr><th scope="col">상품</th><th scope="col">당첨자</th><th scope="col">지급액</th></tr></thead>
-          <tbody>{result.winners.map((winner, index) => <tr key={index}><td>{winner.prize}</td><td>{winner.name}</td><td>{money(winner.amount)}</td></tr>)}</tbody>
+          <thead><tr><th scope="col">상품</th><th scope="col">당첨자</th><th scope="col">총점</th><th scope="col">지급액</th></tr></thead>
+          <tbody>{result.winners.map((winner, index) => <tr key={index}><td>{winner.prize}</td><td>{winner.name}</td><td>{winner.score === undefined ? "—" : `${winner.score}점`}</td><td>{money(winner.amount)}</td></tr>)}</tbody>
         </table></div>
-      </> : <p>저장된 테스트 추첨 결과가 없어요.</p>}
+      </> : <p>저장된 테스트 시상 결과가 없어요.</p>}
     </>)}
     {notice && <p role="status">{notice}</p>}
   </section>;

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { getFirebaseAuth } from "@/lib/firebase-client";
 import WishPrizes from "./WishPrizes";
-import { maxOwnWater, type WishGardenStatus } from "@/lib/wish-garden";
+import { maxOwnWater, wishScore, type WishGardenStatus } from "@/lib/wish-garden";
 
 const path = "/wish-tree-test";
 
@@ -48,7 +48,8 @@ function ParticipationStatus() {
 
   const planted = data?.rows.filter(row => row.tree).length ?? 0;
   const wateredToday = data?.rows.filter(row => row.wateredOwnToday || row.wateredOthersToday).length ?? 0;
-  const rows = data?.rows.filter(row => filter === "all" || (filter === "planted" ? !!row.tree : !row.tree)) ?? [];
+  const rows = (data?.rows.filter(row => filter === "all" || (filter === "planted" ? !!row.tree : !row.tree)) ?? [])
+    .sort((a, b) => (b.tree ? wishScore(b.tree) : -1) - (a.tree ? wishScore(a.tree) : -1));
   const selected = data?.rows.find(row => row.id === selectedId);
 
   return <section className="panel admin-section">
@@ -62,10 +63,11 @@ function ParticipationStatus() {
       <div className="bingo-metrics">
         <div><span>참여 직원</span><strong>{planted}<small> / {data.rows.length}명</small></strong></div>
         <div><span>참여율</span><strong>{data.rows.length ? Math.round(planted / data.rows.length * 100) : 0}<small>%</small></strong></div>
-        <div><span>오늘 물 준 직원</span><strong>{wateredToday}<small>명</small></strong></div>
+        <div><span>오늘 활동한 직원</span><strong>{wateredToday}<small>명</small></strong></div>
         <div><span>사용 중인 자리</span><strong>{data.occupied}<small> / {data.capacity}</small></strong></div>
       </div>
       <p>재직 직원 기준이에요. 이름을 누르면 자리와 작성한 소원을 확인할 수 있어요.</p>
+      <p>내 나무 물주기 3점 · 동료에게 준 장식 1점 · 내 나무에 받은 장식 1점</p>
       <label>참여 상태
         <select value={filter} onChange={event => { setFilter(event.target.value); setSelectedId(null); }}>
           <option value="all">전체</option><option value="planted">심기 완료</option><option value="pending">미참여</option>
@@ -80,13 +82,14 @@ function ParticipationStatus() {
       </section>}
       <div className="table-wrap">
         <table>
-          <thead><tr><th scope="col">직원 이름</th><th scope="col">식재</th><th scope="col">크기 성장</th><th scope="col">동료 장식</th><th scope="col">나무가 받은 물</th><th scope="col">오늘 내 나무</th><th scope="col">오늘 동료 나무</th></tr></thead>
+          <thead><tr><th scope="col">직원 이름</th><th scope="col">식재</th><th scope="col">크기 성장</th><th scope="col">받은 장식</th><th scope="col">준 장식</th><th scope="col">총점</th><th scope="col">오늘 내 나무</th><th scope="col">오늘 장식한 나무</th></tr></thead>
           <tbody>{rows.map(row => <tr key={row.id}>
             <td>{row.tree ? <button type="button" className="bingo-name" onClick={() => setSelectedId(row.id)}>{row.name}</button> : row.name}</td>
             <td>{row.tree ? "심기 완료" : "미참여"}</td>
             <td>{row.tree ? `${Math.min(maxOwnWater, row.tree.ownWater ?? 0)} / ${maxOwnWater}` : "—"}</td>
             <td>{row.tree ? `${row.tree.friendWater ?? 0}개` : "—"}</td>
-            <td>{row.tree ? `${row.tree.count}회` : "—"}</td>
+            <td>{row.tree ? `${row.tree.ornamentsGiven ?? 0}개` : "—"}</td>
+            <td><strong>{row.tree ? `${wishScore(row.tree)}점` : "—"}</strong></td>
             <td>{row.tree ? (row.wateredOwnToday ? "완료" : "미완료") : "—"}</td>
             <td>{row.tree ? `${row.wateredOthersToday}회` : "—"}</td>
           </tr>)}</tbody>

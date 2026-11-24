@@ -10,3 +10,11 @@
 @media (max-width:760px),(pointer:coarse) {
   .surface { height:clamp(380px,62dvh,620px); }
 }
+.joystick { display:none; }
+@media (max-width:760px),(pointer:coarse) {
+  .surface { height:100%; }
+  .pad { display:none; }
+  .joystick { display:grid; place-items:center; position:absolute; right:max(16px,env(safe-area-inset-right)); bottom:max(18px,env(safe-area-inset-bottom)); width:104px; height:104px; border:2px solid #e8f4f5b5; border-radius:50%; background:#172f488f; color:#eff9fa; touch-action:none; user-select:none; box-shadow:0 2px 14px #0b182c55; }
+  .joystick span { display:grid; place-items:center; width:46px; height:46px; border-radius:50%; color:#18354c; font-size:1.5rem; background:#dbedf1; transform:translate(var(--dx,0),var(--dy,0)); pointer-events:none; }
+  .joystick small { position:absolute; bottom:4px; pointer-events:none; }
+}

@@ -2,7 +2,7 @@ import { randomInt } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { getAdminDb } from "@/lib/firebase-admin";
-import { defaultWishPrizes, type WishDraw, type WishPrize } from "@/lib/wish-garden";
+import { defaultWishPrizes, wishScore, type Tree, type WishDraw, type WishPrize } from "@/lib/wish-garden";
 
 const root = () => getAdminDb().collection("wishGardens").doc("christmas-2026-test");
 const rules = () => root().collection("admin").doc("prizes");
@@ -57,15 +57,24 @@ export async function POST(request: NextRequest) {
         tx.get(getAdminDb().collection("employees").where("status", "==", "재직")),
       ]);
       const prizes = (settings.data()?.prizes ?? defaultWishPrizes) as WishPrize[];
-      const owners = new Set<string>((board.data()?.plots ?? []).map((plot: { owner: string }) => plot.owner));
-      const candidates = employees.docs.filter(person => owners.has(person.id));
+      const plots = (board.data()?.plots ?? []) as (Tree & { owner: string })[];
+      const byOwner = new Map(plots.map(plot => [plot.owner, plot]));
+      const candidates = employees.docs.flatMap(person => {
+        const plot = byOwner.get(person.id);
+        return plot ? [{ name: String(person.data().name ?? ""), score: wishScore(plot) }] : [];
+      });
       if (!candidates.length) return null;
       const pool = [...candidates];
+      for (let i = pool.length - 1; i > 0; i--) {
+        const j = randomInt(i + 1);
+        [pool[i], pool[j]] = [pool[j], pool[i]];
+      }
+      pool.sort((a, b) => b.score - a.score);
       const winners: WishDraw["winners"] = [];
       for (const prize of prizes) {
         for (let i = 0; i < prize.quantity && pool.length > 0; i++) {
-          const [person] = pool.splice(randomInt(pool.length), 1);
-          winners.push({ name: String(person.data().name ?? ""), prize: prize.name, amount: prize.amount });
+          const person = pool.shift()!;
+          winners.push({ ...person, prize: prize.name, amount: prize.amount });
         }
       }
       const result: WishDraw = { drawnAt: Date.now(), eligible: candidates.length, winners };

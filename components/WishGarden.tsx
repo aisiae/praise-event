@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { fillTargets, slots, maxOwnWater, maxFriendWater, type Garden } from "@/lib/wish-garden";
+import { useEffect, useEffectEvent, useMemo, useRef, useState, type FormEvent } from "react";
+import { fillTargets, slots, maxOwnWater, maxFriendWater, wishScore, type Garden } from "@/lib/wish-garden";
 import WishScene from "./WishScene";
 import styles from "./WishGarden.module.css";
 
@@ -50,6 +50,7 @@ export default function WishGarden() {
   const treesBySlot = new Map(garden.trees.map(tree => [tree.slot, tree]));
   const closeSlot = slots.findIndex(point => Math.hypot(point.x - position.x, point.y + 12 - position.y) < 46);
   const closeTree = treesBySlot.get(closeSlot);
+  const isOwn = garden.mine?.slot === closeSlot;
   const canWater = !!closeTree && (garden.mine?.slot === closeSlot || garden.targets.includes(closeSlot));
   const ownTree = garden.mine ? treesBySlot.get(garden.mine.slot) : undefined;
   const previewSlot = garden.mine?.slot ?? 35;
@@ -100,8 +101,16 @@ export default function WishGarden() {
     void run(async () => {
       const next = demo ? {
         ...garden, watered: [...new Set([...garden.watered, closeSlot])],
-        trees: garden.trees.map(tree => tree.slot === closeSlot ? { ...tree, count: tree.count + 1, ownWater: (tree.ownWater ?? 0) + Number(garden.mine?.slot === closeSlot), friendWater: (tree.friendWater ?? 0) + Number(garden.mine?.slot !== closeSlot) } : tree),
-      } : await send({ action: "water", slot: closeSlot });
+        trees: garden.trees.map(tree => {
+          if (tree.slot === closeSlot) return {
+            ...tree, count: tree.count + 1,
+            ownWater: (tree.ownWater ?? 0) + Number(isOwn),
+            friendWater: (tree.friendWater ?? 0) + Number(!isOwn),
+          };
+          if (!isOwn && tree.slot === garden.mine?.slot) return { ...tree, ornamentsGiven: (tree.ornamentsGiven ?? 0) + 1 };
+          return tree;
+        }),
+      } : await send({ action: isOwn ? "water" : "decorate", slot: closeSlot });
       setGarden(next);
       setSplash(closeSlot);
       if (splashTimer.current) clearTimeout(splashTimer.current);
@@ -113,12 +122,24 @@ export default function WishGarden() {
     });
   }
 
-  function sceneAction(event: React.KeyboardEvent<HTMLElement>) {
-    if (event.code !== "KeyE" || event.repeat || !active || busy || showMax || plantSlot !== null ||
+  const sceneAction = useEffectEvent((event: KeyboardEvent) => {
+    if ((event.code !== "KeyE" && event.key.toLowerCase() !== "e") || event.repeat || !active || busy || showMax || plantSlot !== null ||
         (event.target instanceof HTMLElement && event.target.closest("input,textarea"))) return;
-    if (!garden.mine && closeSlot >= 0 && !closeTree) setPlantSlot(closeSlot);
-    else if (canWater) water();
-  }
+    if (!garden.mine && closeSlot >= 0 && !closeTree) {
+      event.preventDefault();
+      setPlantSlot(closeSlot);
+    } else if (canWater) {
+      event.preventDefault();
+      water();
+    }
+  });
+
+  useEffect(() => {
+    if (!active) return;
+    const handleKey = (event: KeyboardEvent) => sceneAction(event);
+    window.addEventListener("keydown", handleKey, true);
+    return () => window.removeEventListener("keydown", handleKey, true);
+  }, [active]);
 
   function nextDemoDay() {
     if (!garden.mine) return;
@@ -129,7 +150,7 @@ export default function WishGarden() {
     setNote("다음 테스트 날이에요. 다시 물을 줄 수 있어요.");
   }
 
-  return <main className={styles.garden} onKeyDown={sceneAction}>
+  return <main className={styles.garden} data-playing={active}>
     <header className={styles.header}>
       <div><p>12월 이벤트 테스트</p><h1>2027 소원나무 마당</h1></div>
       {active && <button disabled={busy} onClick={() => void run(async () => {
@@ -153,6 +174,7 @@ export default function WishGarden() {
     </section>}
     {active && <div className={styles.toolbar}>
       <span>{showMax ? `최대 성장 ${maxOwnWater}회 · 장식 ${maxFriendWater}개` : `내 나무 크기 ${Math.min(maxOwnWater, ownTree?.ownWater ?? 0)}/${maxOwnWater} · 장식 ${ownTree?.friendWater ?? 0}개`}</span>
+      {!showMax && ownTree && <span>내 점수 {wishScore(ownTree)}점</span>}
       <span>동료 나무 {garden.targets.filter(slot => garden.watered.includes(slot)).length}/{garden.targets.length}</span>
       {garden.mine && <button onClick={() => {
         const point = slots[garden.mine!.slot];
@@ -169,11 +191,11 @@ export default function WishGarden() {
       {active && !showMax && <>
         <div className={styles.action}>
           {!garden.mine && closeSlot >= 0 && !closeTree && <button onClick={() => setPlantSlot(closeSlot)}>여기에 소원나무 심기 <kbd>E</kbd></button>}
-          {canWater && <button disabled={busy} onClick={water}>💧 물주기 <kbd>E</kbd></button>}
+          {canWater && <button disabled={busy} onClick={water}>{isOwn ? "💧 물주기" : "✦ 장식 달아주기"} <kbd>E</kbd></button>}
         </div>
       </>}
     </div>
-    <p className={styles.instructions}>{active ? "화면의 방향 버튼을 누르거나 방향키·WASD로 이동해요. 마우스 휠이나 +/−로 확대·축소하고, 모바일에서는 화면을 밀어 시점을 돌려요. 테스트에서는 같은 나무에 여러 번 물을 줄 수 있어요." : "직원 로그인 또는 조작 체험으로 마당에 들어갈 수 있어요."}</p>
+    <p className={styles.instructions}>{active ? "화면의 방향 버튼을 누르거나 방향키·WASD로 이동해요. 마우스 휠이나 +/−로 확대·축소하고, 나무 가까이에서 E로 물을 주거나 장식을 달아요. 모바일은 오른쪽 조이스틱으로 이동하고 화면을 밀어 시점을 돌려요." : "직원 로그인 또는 조작 체험으로 마당에 들어갈 수 있어요."}</p>
     <div role="status" className={styles.status}>{note}</div>
     {plantSlot !== null && <div className={styles.shade}>
       <form role="dialog" aria-modal="true" aria-labelledby="wish-title" onSubmit={plant}>

@@ -22,7 +22,7 @@ async function employeeId(request: NextRequest) {
   return person.data()?.status === "재직" ? person.id : null;
 }
 
-async function garden(id: string, action?: "plant" | "water", slot?: number, wish?: string): Promise<Garden> {
+async function garden(id: string, action?: "plant" | "water" | "decorate", slot?: number, wish?: string): Promise<Garden> {
   const root = event();
   const visitRef = root.collection("visits").doc(id);
   return getAdminDb().runTransaction(async tx => {
@@ -40,19 +40,25 @@ async function garden(id: string, action?: "plant" | "water", slot?: number, wis
       plots.push(own);
     }
     if (own) visit.targets = fillTargets(plots, own.slot, visit.targets, randomInt);
-    if (action === "water") {
+    if (action === "water" || action === "decorate") {
       const plot = plots.find(item => item.slot === slot);
-      if (!own || !plot || (slot !== own.slot && !visit.targets.includes(slot!))) throw new Error("오늘 물줄 수 있는 나무를 확인해 주세요.");
+      if (!own || !plot) throw new Error("나무를 확인해 주세요.");
+      if (action === "water") {
+        if (plot.owner !== id) throw new Error("내 나무에만 물을 줄 수 있어요.");
+        plot.ownWater = (plot.ownWater ?? 0) + 1;
+      } else {
+        if (plot.owner === id || !visit.targets.includes(plot.slot)) throw new Error("오늘 장식을 달 수 있는 동료 나무를 확인해 주세요.");
+        plot.friendWater = (plot.friendWater ?? 0) + 1;
+        own.ornamentsGiven = (own.ornamentsGiven ?? 0) + 1;
+      }
       plot.count += 1;
-      if (plot.owner === id) plot.ownWater = (plot.ownWater ?? 0) + 1;
-      else plot.friendWater = (plot.friendWater ?? 0) + 1;
       if (!visit.watered.includes(plot.slot)) visit.watered.push(plot.slot);
     }
     if (action) tx.set(root, { plots }, { merge: true });
     if (own && (action || JSON.stringify(old) !== JSON.stringify(visit))) tx.set(visitRef, visit);
     return {
       signedIn: true,
-      trees: plots.map(({ slot, count, ownWater = 0, friendWater = 0 }) => ({ slot, count, ownWater, friendWater })),
+      trees: plots.map(({ slot, count, ownWater = 0, friendWater = 0, ornamentsGiven }) => ({ slot, count, ownWater, friendWater, ...(slot === own?.slot && { ornamentsGiven: ornamentsGiven ?? 0 }) })),
       mine: own ? { slot: own.slot, wish: own.wish } : null,
       targets: visit.targets,
       watered: visit.watered,
@@ -86,7 +92,7 @@ async function adminStatus(request: NextRequest) {
         return {
           id: employee.id,
           name: String(employee.data().name ?? ""),
-          tree: plot ? { slot: plot.slot, count: plot.count, ownWater: plot.ownWater ?? 0, friendWater: plot.friendWater ?? 0, wish: plot.wish } : null,
+          tree: plot ? { slot: plot.slot, count: plot.count, ownWater: plot.ownWater ?? 0, friendWater: plot.friendWater ?? 0, ornamentsGiven: plot.ornamentsGiven ?? 0, wish: plot.wish } : null,
           wateredOwnToday: !!plot && todaySlots.includes(plot.slot),
           wateredOthersToday: todaySlots.filter(slot => slot !== plot?.slot).length,
         };
@@ -137,7 +143,7 @@ export async function POST(request: NextRequest) {
     if (!id) throw new Error("직원 로그인이 필요합니다.");
     const { action, slot } = body;
     const wish = typeof body.wish === "string" ? body.wish.trim() : "";
-    if ((action !== "plant" && action !== "water") || !Number.isInteger(slot) || slot < 0 || slot >= slots.length) throw new Error("나무 자리를 확인해 주세요.");
+    if ((action !== "plant" && action !== "water" && action !== "decorate") || !Number.isInteger(slot) || slot < 0 || slot >= slots.length) throw new Error("나무 자리를 확인해 주세요.");
     if (action === "plant" && (!wish || wish.length > 150)) throw new Error("소원을 1~150자로 입력해 주세요.");
     return NextResponse.json(await garden(id, action, slot, wish));
   } catch (error) {

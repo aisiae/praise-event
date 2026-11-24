@@ -27,3 +27,15 @@
   .action { max-width:calc(100% - 136px); }
   .action kbd { display:none; }
 }
+@media (max-width:760px),(pointer:coarse) {
+  .garden[data-playing="true"] { position:fixed; z-index:100; inset:0; height:100dvh; min-height:0; padding:0; display:flex; flex-direction:column; overflow:hidden; }
+  .garden[data-playing="true"] .header,.garden[data-playing="true"] .toolbar { width:100%; max-width:none; margin:0; padding:6px 10px; }
+  .garden[data-playing="true"] .header h1 { font-size:1.25rem; }
+  .garden[data-playing="true"] .header p,.garden[data-playing="true"] .instructions { display:none; }
+  .garden[data-playing="true"] .toolbar { gap:4px 8px; font-size:.75rem; }
+  .garden[data-playing="true"] .toolbar button { min-height:34px; padding:4px 8px; }
+  .garden[data-playing="true"] .scene { width:100%; max-width:none; flex:1; min-height:0; border-radius:0; }
+  .garden[data-playing="true"] .status { position:absolute; left:8px; bottom:8px; max-width:calc(100% - 140px); margin:0; pointer-events:none; text-shadow:1px 1px 4px #152840, 0 0 4px #152840; }
+  .garden[data-playing="true"] .action { right:max(16px,env(safe-area-inset-right)); bottom:132px; max-width:calc(100% - 32px); }
+  .garden[data-playing="true"] .action button { min-height:48px; }
+}
