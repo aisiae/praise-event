@@ -8,9 +8,10 @@ export function createVillage(container, { onPick, onNear }) {
     const moveKeys = { up: false, down: false, left: false, right: false };
     const stick = { x: 0, z: 0 };
     let enabled = false;
-    let cameraZoom = 18;
-    let cameraAngle = 0.45;
-    let cameraPitch = 0.62;
+    // Keep the cabin roof and the crossing visible in the opening view.
+    let cameraZoom = 22;
+    let cameraAngle = 0.26;
+    let cameraPitch = 0.45;
     let haloTexture;
 
     const scene = new THREE.Scene();
@@ -1137,7 +1138,7 @@ export function createVillage(container, { onPick, onNear }) {
         const targetCamY = Math.max(2.0, player.position.y + camHeight);
     
         camera.position.lerp(new THREE.Vector3(targetCamX, targetCamY, targetCamZ), 0.12);
-        camera.lookAt(player.position.x, player.position.y + 1.2, player.position.z);
+        camera.lookAt(player.position.x, player.position.y + 1.95, player.position.z);
     
         // 3. 나무 꼭대기 별 회전 & 오로라 일렁임 & 굴뚝 연기 & 눈송이 애니메이션
         plantedTrees.forEach(tree => {
@@ -1187,7 +1188,7 @@ export function createVillage(container, { onPick, onNear }) {
         renderer.render(scene, camera);
     }
 
-    // Start at the original orbit angle before the first frame.
+    // Set the opening view before the camera starts following the player.
     camera.position.set(Math.sin(cameraAngle) * Math.cos(cameraPitch) * cameraZoom,
         Math.sin(cameraPitch) * cameraZoom, player.position.z + Math.cos(cameraAngle) * Math.cos(cameraPitch) * cameraZoom);
     animate();
