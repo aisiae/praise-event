@@ -30,7 +30,7 @@
                 <div id="growth-cells" class="growth-cells" role="progressbar" aria-label="내 소원나무 성장" aria-valuemin="0" aria-valuemax="23" aria-valuenow="0"></div>
             </div>
         </section>
-        <p class="glass-panel help"><span aria-hidden="true">💡</span><span class="desktop-help">방향키 이동 · 마우스 드래그 회전 · 나무/빈터 클릭 · R</span><span class="mobile-help">조이스틱 이동 · 화면 밀어서 회전 · 나무/빈터 터치</span></p>
+        <p class="glass-panel help"><span aria-hidden="true">💡</span><span class="desktop-help">방향키 / WASD 이동 · 마우스 드래그 회전 · 나무/빈터 클릭 · R</span><span class="mobile-help">조이스틱 이동 · 화면 밀어서 회전 · 나무/빈터 터치</span></p>
     </header>
 
     <div class="zoom" role="group" aria-label="화면 확대와 축소">
@@ -39,10 +39,10 @@
     </div>
 
     <div class="movement" role="group" aria-label="캐릭터 이동">
-        <button class="btn-control" data-direction="up" aria-label="앞으로">↑</button>
-        <button class="btn-control" data-direction="left" aria-label="왼쪽">←</button>
-        <button class="btn-control" data-direction="down" aria-label="뒤로">↓</button>
-        <button class="btn-control" data-direction="right" aria-label="오른쪽">→</button>
+        <button class="btn-control" data-direction="up" aria-label="앞으로" aria-keyshortcuts="ArrowUp W">↑<kbd>W</kbd></button>
+        <button class="btn-control" data-direction="left" aria-label="왼쪽" aria-keyshortcuts="ArrowLeft A">←<kbd>A</kbd></button>
+        <button class="btn-control" data-direction="down" aria-label="뒤로" aria-keyshortcuts="ArrowDown S">↓<kbd>S</kbd></button>
+        <button class="btn-control" data-direction="right" aria-label="오른쪽" aria-keyshortcuts="ArrowRight D">→<kbd>D</kbd></button>
     </div>
     <div id="joystick" class="glass-panel joystick" aria-label="캐릭터 이동 조이스틱"><span aria-hidden="true">✥</span></div>
 
