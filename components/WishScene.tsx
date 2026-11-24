@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { slots, stageFor, type Garden } from "@/lib/wish-garden";
+import { slots, treeSize, maxFriendWater, type Garden } from "@/lib/wish-garden";
 import css from "./WishScene.module.css";
 
 type Point = { x: number; y: number };
@@ -16,13 +16,27 @@ function box(mesh: Face[], x: number, z: number, width: number, depth: number, l
   mesh.push({vertices:roof,color:top});
 }
 
-function pine(mesh: Face[], x: number, z: number, size: number, stage: number) {
-  box(mesh,x,z,size*.12,size*.12,0,size*.45,"#644437","#87634a");
-  for(let layer=0;layer<Math.min(3,stage+1);layer++){
-    const radius=size*(.42-layer*.08), level=size*(.21+layer*.24);
-    for(let face=0;face<5;face++){
-      const angle=face*Math.PI*2/5, next=(face+1)*Math.PI*2/5;
-      mesh.push({vertices:[[x+Math.cos(angle)*radius,level,z+Math.sin(angle)*radius],[x+Math.cos(next)*radius,level,z+Math.sin(next)*radius],[x,level+size*.59,z]],color:["#306451","#497964","#275244","#578977","#3a7056"][face]});
+const foliage = ["#315c4e", "#3c715a", "#4c8065", "#59896e", "#386d57", "#254c43", "#315e4d", "#23483e"];
+const ornaments = ["#fcae69", "#fa657d", "#ffe899", "#dca5f3", "#9dddf6", "#ffede4"];
+const directionButtons = [
+  { code: "ArrowUp", label: "앞으로", icon: "↑", dx: 0, dz: -1 },
+  { code: "ArrowLeft", label: "왼쪽", icon: "←", dx: -1, dz: 0 },
+  { code: "ArrowDown", label: "뒤로", icon: "↓", dx: 0, dz: 1 },
+  { code: "ArrowRight", label: "오른쪽", icon: "→", dx: 1, dz: 0 },
+];
+
+function pine(mesh: Face[], x: number, z: number, size: number, layers: number) {
+  box(mesh,x,z,size*.12,size*.12,0,size*.46,"#644437","#87634a");
+  for (let layer = 0; layer < layers; layer++) {
+    const radius = size * (.44 - layer * .063), level = size * (.2 + layer * .16);
+    for (let face = 0; face < 8; face++) {
+      const angle = face * Math.PI / 4, next = angle + Math.PI / 4;
+      const point = (a: number, r: number, y: number): Vec => [x + Math.cos(a) * r, y, z + Math.sin(a) * r];
+      const rim = point(angle, radius, level), nextRim = point(next, radius, level);
+      const middle = point(angle, radius * .61, level + size * .22);
+      const nextMiddle = point(next, radius * .61, level + size * .22);
+      mesh.push({ vertices: [rim, nextRim, nextMiddle, middle], color: foliage[face] });
+      mesh.push({ vertices: [middle, nextMiddle, [x, level + size * .58, z]], color: face === 2 || face === 3 ? "#8eb2a0" : foliage[face] });
     }
   }
 }
@@ -59,13 +73,14 @@ function courtyard() {
   return mesh;
 }
 
+const layersFor = (ownWater: number) => Math.min(5, 1 + Math.floor(ownWater / 5));
 const staticMesh = courtyard();
 
 export default function WishScene({ active, blocked, garden, position, onMove, splash }: {
   active: boolean; blocked: boolean; garden: Garden; position: Point; onMove: (point: Point) => void; splash: number | null;
 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
-  const input = useRef({ held: new Set<string>(), yaw: 0, pitch: .23, stick: {x:0,y:0}, drag: -1 });
+  const input = useRef({ held: new Set<string>(), yaw: 0, pitch: .23, zoom: 1, drag: -1 });
   const current = useRef({active,blocked,garden,position,onMove,splash});
   useEffect(() => { current.current={active,blocked,garden,position,onMove,splash}; }, [active,blocked,garden,position,onMove,splash]);
   useEffect(() => {
@@ -73,11 +88,16 @@ export default function WishScene({ active, blocked, garden, position, onMove, s
     const ctx = element.getContext("2d", {alpha:false})!;
     const controls=input.current;
     let frame=0, last=0, cachedTrees: Garden["trees"] | null=null, trees: Face[]=[];
-    const clear=()=>{controls.held.clear(); controls.stick={x:0,y:0}; controls.drag=-1;};
+    const clear=()=>{controls.held.clear(); controls.drag=-1;};
     const down=(event:KeyboardEvent)=>{
       if(!current.current.active||current.current.blocked||!keys.has(event.code)|| (event.target instanceof HTMLElement && event.target.closest("input,textarea,[contenteditable]"))) return;
       controls.held.add(event.code);
       event.preventDefault();
+    };
+    const wheel=(event:WheelEvent)=>{
+      if(!current.current.active||current.current.blocked) return;
+      event.preventDefault();
+      controls.zoom=Math.max(.68,Math.min(4.8,controls.zoom*Math.exp(Math.sign(event.deltaY)*.14)));
     };
     const up=(event:KeyboardEvent)=>controls.held.delete(event.code);
     const look=(event:MouseEvent)=>{
@@ -92,8 +112,8 @@ export default function WishScene({ active, blocked, garden, position, onMove, s
       last=time;
       const state=current.current;
       const sign=(positive:string,alternate:string)=>Number(controls.held.has(positive)||controls.held.has(alternate));
-      const side=sign("ArrowRight","KeyD")-sign("ArrowLeft","KeyA")+controls.stick.x;
-      const forward=sign("ArrowUp","KeyW")-sign("ArrowDown","KeyS")-controls.stick.y;
+      const side=sign("ArrowRight","KeyD")-sign("ArrowLeft","KeyA");
+      const forward=sign("ArrowUp","KeyW")-sign("ArrowDown","KeyS");
       const sin=Math.sin(controls.yaw), cos=Math.cos(controls.yaw);
       let {x,y:z}=state.position;
       const moving=state.active&&!state.blocked&&Math.hypot(side,forward)>.06;
@@ -112,8 +132,8 @@ export default function WishScene({ active, blocked, garden, position, onMove, s
       const sky=ctx.createLinearGradient(0,0,0,height);
       sky.addColorStop(0,"#172840");sky.addColorStop(.65,"#62788b");sky.addColorStop(1,"#acb9c5");
       ctx.fillStyle=sky;ctx.fillRect(0,0,width,height);
-      const pitch=controls.pitch, cp=Math.cos(pitch), sp=Math.sin(pitch);
-      const cameraX=x-sin*69, cameraZ=z+cos*69, cameraHeight=44, focal=Math.min(width*.91,height*.94);
+      const pitch=controls.pitch+(controls.zoom-1)*.10, cp=Math.cos(pitch), sp=Math.sin(pitch);
+      const cameraX=x-sin*90*controls.zoom, cameraZ=z+cos*90*controls.zoom, cameraHeight=52+(controls.zoom-1)*58, focal=Math.min(width*.91,height*.94);
       const transform=([wx,wy,wz]:Vec):Vec=>{
         const dx=wx-cameraX, dz=wz-cameraZ, vertical=wy-cameraHeight, ahead=dx*sin-dz*cos;
         return [dx*cos+dz*sin,vertical*cp+ahead*sp,ahead*cp-vertical*sp];
@@ -128,7 +148,7 @@ export default function WishScene({ active, blocked, garden, position, onMove, s
         slots.forEach(({x,y},slot)=>{
           const tree=bySlot.get(slot);
           box(trees,x,y,35,27,0,1,"#9eb0b4","#b7c7c8");
-          if(tree){const stage=stageFor(tree.count);pine(trees,x,y,22+stage*15,stage);}
+          if(tree) pine(trees,x,y,treeSize(tree),layersFor(tree.ownWater ?? 0));
         });
       }
       const player:Face[]=[];
@@ -159,13 +179,29 @@ export default function WishScene({ active, blocked, garden, position, onMove, s
         ctx.beginPath(); points.forEach(([px,py],i)=>i?ctx.lineTo(px,py):ctx.moveTo(px,py));ctx.closePath();ctx.fill();
       }
       for(const tree of state.garden.trees){
-        const plot=slots[tree.slot], stage=stageFor(tree.count);
+        const plot=slots[tree.slot], size=treeSize(tree), layers=layersFor(tree.ownWater ?? 0);
+        const distance=Math.hypot(plot.x-cameraX,plot.y-cameraZ);
+        const count=Math.min(maxFriendWater,tree.friendWater ?? 0);
+        const visibleOrnaments=Math.min(count,distance<205?maxFriendWater:distance<410?100:24);
+        for(let i=0;i<visibleOrnaments;i++){
+          const layer=i%layers, angle=(i*2.399963+tree.slot*1.713)% (Math.PI*2);
+          if(Math.cos(angle)*(cameraX-plot.x)+Math.sin(angle)*(cameraZ-plot.y)<0) continue;
+          const fraction=.08+((Math.imul(i+tree.slot*13+1,2654435761)>>>0)%997)/997*.78;
+          const radius=size*(.44-layer*.063)*(1-fraction*.95);
+          const ornament=transform([plot.x+Math.cos(angle)*radius,size*(.21+layer*.16+fraction*.56),plot.y+Math.sin(angle)*radius]);
+          if(ornament[2]<8) continue;
+          const [ox,oy]=project(ornament);
+          if(ox<0||oy<0||ox>width||oy>height) continue;
+          const dotsize=Math.max(.6,Math.min(3.2,focal*(count>180?.46:.78)/ornament[2]));
+          ctx.fillStyle=ornaments[(i*17+tree.slot)%ornaments.length];
+          ctx.beginPath();ctx.arc(ox,oy,dotsize,0,Math.PI*2);ctx.fill();
+        }
         const label=state.garden.mine?.slot===tree.slot ? state.garden.mine.wish : state.garden.targets.includes(tree.slot)&&!state.garden.watered.includes(tree.slot) ? "💧" : "";
-        const view=transform([plot.x,37+stage*16,plot.y]);
+        const view=transform([plot.x,size*(.86+layers*.16)+9,plot.y]);
         if(view[2]<10)continue;
         const [px,py]=project(view);
         ctx.textAlign="center";
-        if(stage===4){ctx.font="20px sans-serif";ctx.fillStyle="#ffda7a";ctx.fillText("★",px,py+16);}
+        if((tree.ownWater ?? 0)>=23){ctx.font="20px sans-serif";ctx.fillStyle="#ffda7a";ctx.fillText("★",px,py+16);}
         if(label&&view[2]<280){
           ctx.font="bold 13px sans-serif";ctx.fillStyle="#192637";
           const rows=label.match(/.{1,22}/gu)??[];
@@ -185,14 +221,13 @@ export default function WishScene({ active, blocked, garden, position, onMove, s
       }
     }
     frame=requestAnimationFrame(draw);
+    element.addEventListener("wheel",wheel,{passive:false});
     window.addEventListener("keydown",down);window.addEventListener("keyup",up);window.addEventListener("blur",clear);
     document.addEventListener("mousemove",look);document.addEventListener("visibilitychange",clear);
-    return ()=>{cancelAnimationFrame(frame);window.removeEventListener("keydown",down);window.removeEventListener("keyup",up);window.removeEventListener("blur",clear);document.removeEventListener("mousemove",look);document.removeEventListener("visibilitychange",clear);if(document.pointerLockElement===element)document.exitPointerLock();};
+    return ()=>{element.removeEventListener("wheel",wheel);cancelAnimationFrame(frame);window.removeEventListener("keydown",down);window.removeEventListener("keyup",up);window.removeEventListener("blur",clear);document.removeEventListener("mousemove",look);document.removeEventListener("visibilitychange",clear);if(document.pointerLockElement===element)document.exitPointerLock();};
   },[]);
   useEffect(()=>{if((blocked||!active)&&document.pointerLockElement===canvas.current)document.exitPointerLock();},[blocked,active]);
 
-  const stickId = useRef(-1);
-  const stickLook = useRef({x:0,y:0});
   const dragPoint = useRef({x:0,y:0});
   return <div className={css.surface}>
     <canvas ref={canvas} tabIndex={active?0:-1} aria-label="3D 소원나무 마당. 마우스로 둘러보고 방향키로 이동하세요."
@@ -200,17 +235,25 @@ export default function WishScene({ active, blocked, garden, position, onMove, s
       onPointerDown={event=>{if(!active||blocked)return;input.current.drag=event.pointerId;dragPoint.current={x:event.clientX,y:event.clientY};event.currentTarget.setPointerCapture(event.pointerId);}}
       onLostPointerCapture={()=>{input.current.drag=-1;}}
       onPointerMove={event=>{if(input.current.drag!==event.pointerId||document.pointerLockElement===event.currentTarget)return;input.current.yaw+=(event.clientX-dragPoint.current.x)*.008;input.current.pitch=Math.max(-.12,Math.min(.75,input.current.pitch+(event.clientY-dragPoint.current.y)*.005));dragPoint.current={x:event.clientX,y:event.clientY};}} />
-    {active && <div className={css.stick} role="group" aria-label="왼쪽 이동 조이스틱"
-      onPointerDown={event=>{stickId.current=event.pointerId;stickLook.current={x:event.clientX,y:event.clientY};event.currentTarget.setPointerCapture(event.pointerId);}}
-      onPointerMove={event=>{
-        if(stickId.current!==event.pointerId)return;
-        const dx=event.clientX-stickLook.current.x,dy=event.clientY-stickLook.current.y,m=Math.max(25,Math.hypot(dx,dy));
-        input.current.stick={x:dx/m,y:dy/m};
-        event.currentTarget.style.setProperty("--dx",Math.round(dx/m*23)+"px");
-        event.currentTarget.style.setProperty("--dy",Math.round(dy/m*23)+"px");
-      }}
-      onLostPointerCapture={event=>{stickId.current=-1;input.current.stick={x:0,y:0};event.currentTarget.style.setProperty("--dx","0px");event.currentTarget.style.setProperty("--dy","0px");}}>
-      <span /><small>이동</small>
-    </div>}
+    {active && <>
+      <div className={css.pad} role="group" aria-label="이동 방향 버튼">
+        {directionButtons.map(({code,label,icon,dx,dz}) => <button type="button" key={code} aria-label={label}
+          onPointerDown={event=>{
+            event.currentTarget.setPointerCapture(event.pointerId);
+            input.current.held.add(code);
+          }}
+          onLostPointerCapture={()=>input.current.held.delete(code)}
+          onClick={()=>{
+            if(blocked) return;
+            const yaw=input.current.yaw;
+            onMove({x:Math.min(990,Math.max(48,position.x+(dx*Math.cos(yaw)-dz*Math.sin(yaw))*9)),
+              y:Math.min(756,Math.max(184,position.y+(dx*Math.sin(yaw)+dz*Math.cos(yaw))*9))});
+          }}>{icon}</button>)}
+      </div>
+      <div className={css.zoom} role="group" aria-label="카메라 확대와 축소">
+        <button type="button" aria-label="화면 확대" onClick={()=>{input.current.zoom=Math.max(.68,input.current.zoom/1.25);}}>+</button>
+        <button type="button" aria-label="화면 축소" onClick={()=>{input.current.zoom=Math.min(4.8,input.current.zoom*1.25);}}>−</button>
+      </div>
+    </>}
   </div>;
 }

@@ -1,17 +1,18 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent } from "react";
-import { fillTargets, slots, stages, stageFor, type Garden } from "@/lib/wish-garden";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { fillTargets, slots, maxOwnWater, maxFriendWater, type Garden } from "@/lib/wish-garden";
 import WishScene from "./WishScene";
 import styles from "./WishGarden.module.css";
 
 const empty: Garden = { signedIn: false, trees: [], mine: null, targets: [], watered: [] };
 const start = { x: 518, y: 744 };
-const demoTrees = [{ slot: 34, count: 2 }, { slot: 37, count: 5 }, { slot: 28, count: 8 }, { slot: 19, count: 12 }];
+const demoTrees = [2, 5, 11, 19].map((ownWater, index) => ({ slot: [34, 37, 28, 19][index], count: ownWater * 2, ownWater, friendWater: ownWater }));
 
 export default function WishGarden() {
   const [garden, setGarden] = useState(empty);
   const [demo, setDemo] = useState(false);
+  const [showMax, setShowMax] = useState(false);
   const [checking, setChecking] = useState(true);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
@@ -50,7 +51,13 @@ export default function WishGarden() {
   const closeSlot = slots.findIndex(point => Math.hypot(point.x - position.x, point.y + 12 - position.y) < 46);
   const closeTree = treesBySlot.get(closeSlot);
   const canWater = !!closeTree && (garden.mine?.slot === closeSlot || garden.targets.includes(closeSlot));
-  const alreadyWatered = garden.watered.includes(closeSlot);
+  const ownTree = garden.mine ? treesBySlot.get(garden.mine.slot) : undefined;
+  const previewSlot = garden.mine?.slot ?? 35;
+  const visibleGarden = useMemo(() => {
+    if (!showMax) return garden;
+    const maximum = { slot: previewSlot, count: maxOwnWater + maxFriendWater, ownWater: maxOwnWater, friendWater: maxFriendWater };
+    return { ...garden, trees: [...garden.trees.filter(tree => tree.slot !== previewSlot), maximum] };
+  }, [garden, previewSlot, showMax]);
 
   async function send(body: Record<string, unknown>) {
     const response = await fetch("/api/wish-tree-test", {
@@ -89,26 +96,28 @@ export default function WishGarden() {
   }
 
   function water() {
-    if (!closeTree || !canWater || alreadyWatered || busy) return;
+    if (!closeTree || !canWater || busy || showMax) return;
     void run(async () => {
       const next = demo ? {
-        ...garden, watered: [...garden.watered, closeSlot],
-        trees: garden.trees.map(tree => tree.slot === closeSlot ? { ...tree, count: tree.count + 1 } : tree),
+        ...garden, watered: [...new Set([...garden.watered, closeSlot])],
+        trees: garden.trees.map(tree => tree.slot === closeSlot ? { ...tree, count: tree.count + 1, ownWater: (tree.ownWater ?? 0) + Number(garden.mine?.slot === closeSlot), friendWater: (tree.friendWater ?? 0) + Number(garden.mine?.slot !== closeSlot) } : tree),
       } : await send({ action: "water", slot: closeSlot });
       setGarden(next);
       setSplash(closeSlot);
       if (splashTimer.current) clearTimeout(splashTimer.current);
       splashTimer.current = setTimeout(() => setSplash(null), 850);
-      const count = next.trees.find(tree => tree.slot === closeSlot)!.count;
-      setNote(stageFor(count) > stageFor(closeTree.count) ? `나무가 자랐어요! ${stages[stageFor(count)]} · 누적 ${count}회` : `물을 주었어요! 누적 ${count}회`);
+      const tree = next.trees.find(tree => tree.slot === closeSlot)!;
+      setNote(garden.mine?.slot === closeSlot
+        ? `내 나무 크기 ${Math.min(maxOwnWater, tree.ownWater ?? 0)}/${maxOwnWater} · 물주기 ${tree.ownWater ?? 0}회`
+        : `동료 나무에 장식을 달았어요! 누적 ${tree.friendWater ?? 0}개`);
     });
   }
 
   function sceneAction(event: React.KeyboardEvent<HTMLElement>) {
-    if (event.code !== "KeyE" || event.repeat || !active || busy || plantSlot !== null ||
+    if (event.code !== "KeyE" || event.repeat || !active || busy || showMax || plantSlot !== null ||
         (event.target instanceof HTMLElement && event.target.closest("input,textarea"))) return;
     if (!garden.mine && closeSlot >= 0 && !closeTree) setPlantSlot(closeSlot);
-    else if (canWater && !alreadyWatered) water();
+    else if (canWater) water();
   }
 
   function nextDemoDay() {
@@ -126,6 +135,7 @@ export default function WishGarden() {
       {active && <button disabled={busy} onClick={() => void run(async () => {
         setGarden(demo ? empty : await send({ action: "logout" }));
         setDemo(false);
+        setShowMax(false);
         setPosition(start);
         setPlantSlot(null);
         setWish("");
@@ -142,24 +152,28 @@ export default function WishGarden() {
       <button disabled={busy || checking} onClick={() => { setDemo(true); setGarden({ ...empty, trees: demoTrees }); setNote(""); }}>로그인 없이 조작 체험</button>
     </section>}
     {active && <div className={styles.toolbar}>
-      <span>내 나무 {garden.mine && garden.watered.includes(garden.mine.slot) ? "1" : "0"}/1</span>
+      <span>{showMax ? `최대 성장 ${maxOwnWater}회 · 장식 ${maxFriendWater}개` : `내 나무 크기 ${Math.min(maxOwnWater, ownTree?.ownWater ?? 0)}/${maxOwnWater} · 장식 ${ownTree?.friendWater ?? 0}개`}</span>
       <span>동료 나무 {garden.targets.filter(slot => garden.watered.includes(slot)).length}/{garden.targets.length}</span>
       {garden.mine && <button onClick={() => {
         const point = slots[garden.mine!.slot];
         setPosition({ x: point.x, y: point.y + 30 });
       }}>내 나무 찾기</button>}
-      {demo && garden.mine && <button onClick={nextDemoDay}>다음 날 체험</button>}
+      {demo && garden.mine && !showMax && <button onClick={nextDemoDay}>랜덤 대상 다시 뽑기</button>}
+      <button aria-pressed={showMax} onClick={() => {
+        setShowMax(value => !value);
+        if (!showMax) setPosition({ x: slots[previewSlot].x, y: slots[previewSlot].y + 92 });
+      }}>{showMax ? "최대 성장 미리보기 닫기" : "23일 최대 성장 미리보기"}</button>
     </div>}
     <div className={styles.scene}>
-      <WishScene active={active} blocked={plantSlot !== null} garden={garden} position={position} onMove={setPosition} splash={splash} />
-      {active && <>
+      <WishScene key={String(showMax)} active={active} blocked={plantSlot !== null} garden={visibleGarden} position={position} onMove={setPosition} splash={splash} />
+      {active && !showMax && <>
         <div className={styles.action}>
           {!garden.mine && closeSlot >= 0 && !closeTree && <button onClick={() => setPlantSlot(closeSlot)}>여기에 소원나무 심기 <kbd>E</kbd></button>}
-          {canWater && <button disabled={alreadyWatered || busy} onClick={water}>{alreadyWatered ? "오늘 물주기 완료" : <>💧 물주기 <kbd>E</kbd></>}</button>}
+          {canWater && <button disabled={busy} onClick={water}>💧 물주기 <kbd>E</kbd></button>}
         </div>
       </>}
     </div>
-    <p className={styles.instructions}>{active ? "PC는 마당 클릭 후 마우스로 둘러보고, 방향키나 WASD로 이동해요. E로 심기·물주기, Esc로 마우스를 해제해요. 모바일은 왼쪽 조이스틱으로 이동하고 마당을 밀어 둘러보세요." : "직원 로그인 또는 조작 체험으로 마당에 들어갈 수 있어요."}</p>
+    <p className={styles.instructions}>{active ? "화면의 방향 버튼을 누르거나 방향키·WASD로 이동해요. 마우스 휠이나 +/−로 확대·축소하고, 모바일에서는 화면을 밀어 시점을 돌려요. 테스트에서는 같은 나무에 여러 번 물을 줄 수 있어요." : "직원 로그인 또는 조작 체험으로 마당에 들어갈 수 있어요."}</p>
     <div role="status" className={styles.status}>{note}</div>
     {plantSlot !== null && <div className={styles.shade}>
       <form role="dialog" aria-modal="true" aria-labelledby="wish-title" onSubmit={plant}>

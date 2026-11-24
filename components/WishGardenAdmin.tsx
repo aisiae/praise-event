@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { getFirebaseAuth } from "@/lib/firebase-client";
-import { stageFor, stages, type WishGardenStatus } from "@/lib/wish-garden";
+import WishPrizes from "./WishPrizes";
+import { maxOwnWater, type WishGardenStatus } from "@/lib/wish-garden";
 
 const path = "/wish-tree-test";
 
@@ -79,11 +80,12 @@ function ParticipationStatus() {
       </section>}
       <div className="table-wrap">
         <table>
-          <thead><tr><th scope="col">직원 이름</th><th scope="col">식재</th><th scope="col">성장 단계</th><th scope="col">나무가 받은 물</th><th scope="col">오늘 내 나무</th><th scope="col">오늘 동료 나무</th></tr></thead>
+          <thead><tr><th scope="col">직원 이름</th><th scope="col">식재</th><th scope="col">크기 성장</th><th scope="col">동료 장식</th><th scope="col">나무가 받은 물</th><th scope="col">오늘 내 나무</th><th scope="col">오늘 동료 나무</th></tr></thead>
           <tbody>{rows.map(row => <tr key={row.id}>
             <td>{row.tree ? <button type="button" className="bingo-name" onClick={() => setSelectedId(row.id)}>{row.name}</button> : row.name}</td>
             <td>{row.tree ? "심기 완료" : "미참여"}</td>
-            <td>{row.tree ? stages[stageFor(row.tree.count)] : "—"}</td>
+            <td>{row.tree ? `${Math.min(maxOwnWater, row.tree.ownWater ?? 0)} / ${maxOwnWater}` : "—"}</td>
+            <td>{row.tree ? `${row.tree.friendWater ?? 0}개` : "—"}</td>
             <td>{row.tree ? `${row.tree.count}회` : "—"}</td>
             <td>{row.tree ? (row.wateredOwnToday ? "완료" : "미완료") : "—"}</td>
             <td>{row.tree ? `${row.wateredOthersToday}회` : "—"}</td>
@@ -96,17 +98,18 @@ function ParticipationStatus() {
 }
 
 export default function WishGardenAdmin() {
-  const [tab, setTab] = useState<"settings" | "status">("settings");
+  const [tab, setTab] = useState<"settings" | "status" | "prizes" | "results">("settings");
   const [mobile, setMobile] = useState(false);
   const [notice, setNotice] = useState("");
   const url = typeof window === "undefined" ? path : new URL(path, window.location.origin).href;
 
   return <section className="bingo-test embedded-bingo">
     <nav className="admin-tabs" aria-label="소원나무 관리자 메뉴">
-      <button type="button" className={tab === "settings" ? "active" : ""} aria-current={tab === "settings" ? "page" : undefined} onClick={() => setTab("settings")}>이벤트 설정</button>
-      <button type="button" className={tab === "status" ? "active" : ""} aria-current={tab === "status" ? "page" : undefined} onClick={() => setTab("status")}>이벤트 현황</button>
+      {([["settings", "이벤트 설정"], ["prizes", "상품 관리"], ["status", "이벤트 현황"], ["results", "결과"]] as const).map(([id, label]) => (
+        <button key={id} type="button" className={tab === id ? "active" : ""} aria-current={tab === id ? "page" : undefined} onClick={() => setTab(id)}>{label}</button>
+      ))}
     </nav>
-    {tab === "status" ? <ParticipationStatus /> : <section className="panel admin-section">
+    {tab === "status" ? <ParticipationStatus /> : tab === "prizes" || tab === "results" ? <WishPrizes key={tab} tab={tab} /> : <section className="panel admin-section">
       <h3>이벤트 설정</h3>
       <button type="button" className="button secondary" aria-expanded={mobile} onClick={() => setMobile(value => !value)}>
         {mobile ? "모바일 화면 닫기" : "모바일 화면 보기"}

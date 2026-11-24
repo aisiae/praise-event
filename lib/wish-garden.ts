@@ -1,4 +1,4 @@
-export type Tree = { slot: number; count: number };
+export type Tree = { slot: number; count: number; ownWater?: number; friendWater?: number };
 export type Garden = {
   signedIn: boolean;
   trees: Tree[];
@@ -34,3 +34,15 @@ export type WishGardenStatus = {
     wateredOthersToday: number;
   }[];
 };
+
+export const maxOwnWater = 23;
+export const maxFriendWater = 39 * maxOwnWater;
+export const treeSize = (tree: Tree) => 24 + Math.min(maxOwnWater, tree.ownWater ?? 0) * 2.6;
+
+export type WishPrize = { name: string; amount: number; quantity: number };
+export type WishDraw = { drawnAt: number; eligible: number; winners: { name: string; prize: string; amount: number }[] };
+export const defaultWishPrizes: WishPrize[] = [
+  { name: "1등", amount: 50000, quantity: 1 },
+  { name: "2등", amount: 30000, quantity: 5 },
+  { name: "3등", amount: 10000, quantity: 10 },
+];

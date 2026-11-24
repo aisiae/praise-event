@@ -43,15 +43,16 @@ async function garden(id: string, action?: "plant" | "water", slot?: number, wis
     if (action === "water") {
       const plot = plots.find(item => item.slot === slot);
       if (!own || !plot || (slot !== own.slot && !visit.targets.includes(slot!))) throw new Error("오늘 물줄 수 있는 나무를 확인해 주세요.");
-      if (visit.watered.includes(plot.slot)) throw new Error("오늘 이 나무에 이미 물을 주었어요.");
       plot.count += 1;
-      visit.watered.push(plot.slot);
+      if (plot.owner === id) plot.ownWater = (plot.ownWater ?? 0) + 1;
+      else plot.friendWater = (plot.friendWater ?? 0) + 1;
+      if (!visit.watered.includes(plot.slot)) visit.watered.push(plot.slot);
     }
     if (action) tx.set(root, { plots }, { merge: true });
     if (own && (action || JSON.stringify(old) !== JSON.stringify(visit))) tx.set(visitRef, visit);
     return {
       signedIn: true,
-      trees: plots.map(({ slot, count }) => ({ slot, count })),
+      trees: plots.map(({ slot, count, ownWater = 0, friendWater = 0 }) => ({ slot, count, ownWater, friendWater })),
       mine: own ? { slot: own.slot, wish: own.wish } : null,
       targets: visit.targets,
       watered: visit.watered,
@@ -85,7 +86,7 @@ async function adminStatus(request: NextRequest) {
         return {
           id: employee.id,
           name: String(employee.data().name ?? ""),
-          tree: plot ? { slot: plot.slot, count: plot.count, wish: plot.wish } : null,
+          tree: plot ? { slot: plot.slot, count: plot.count, ownWater: plot.ownWater ?? 0, friendWater: plot.friendWater ?? 0, wish: plot.wish } : null,
           wateredOwnToday: !!plot && todaySlots.includes(plot.slot),
           wateredOthersToday: todaySlots.filter(slot => slot !== plot?.slot).length,
         };
