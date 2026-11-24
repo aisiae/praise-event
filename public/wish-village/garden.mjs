@@ -47,22 +47,12 @@ function toast(message) {
     setTimeout(() => item.remove(), 3200);
 }
 
-function targetsFor(trees, ownSlot) {
-    const choices = trees.map(tree => tree.slot).filter(slot => slot !== ownSlot);
-    const targets = [];
-    while (targets.length < ornamentLimit && choices.length) {
-        const index = Math.floor(Math.random() * choices.length);
-        targets.push(choices.splice(index, 1)[0]);
-    }
-    return targets;
-}
-
 function actionFor(slot) {
     const tree = treeAt(slot);
     if (!tree) return garden.mine ? null : { action: 'plant', label: '🌱 소원 나무 심기', color: 'emerald' };
     if (slot === garden.mine?.slot) {
         if (growthOf(tree) >= maximum) return { label: '성장 완료' };
-        if (garden.watered.includes(slot)) return { label: '오늘 물주기 완료 ✓' };
+        if (mode === 'live' && garden.watered.includes(slot)) return { label: '오늘 물주기 완료 ✓' };
         return { action: 'water', label: '💧 소원 나무에 물주기', color: 'sky' };
     }
     if (mode === 'demo') {
@@ -118,7 +108,6 @@ function syncView() {
     Array.from(growthCells.children).forEach((cell, index) => cell.classList.toggle('filled', index < shownGrowth));
     byId('leave').hidden = false;
     byId('leave').textContent = mode === 'demo' ? '직원 로그인' : '로그아웃';
-    byId('next-day').hidden = mode !== 'demo' || !own || preview;
     byId('find-target').hidden = !targets.length || preview;
     byId('find-target').textContent = mode === 'demo' ? '🎁 장식 체험하기' : '🎁 오늘 장식할 나무 찾기';
     maxPreview.hidden = false;
@@ -245,7 +234,7 @@ function tryAction(slot) {
             } else {
                 const own = action === 'water';
                 garden = {
-                    ...garden, watered: own ? [...garden.watered, slot] : garden.watered,
+                    ...garden,
                     trees: garden.trees.map(tree => {
                         if (tree.slot === slot) return {
                             ...tree,
@@ -344,7 +333,7 @@ if (village) {
         void run(async () => {
             garden = mode === 'live'
                 ? await send({ action: 'plant', slot, wish })
-                : { ...garden, trees: [...garden.trees, { slot }], mine: { slot, wish }, targets: targetsFor(garden.trees, slot) };
+                : { ...garden, trees: [...garden.trees, { slot }], mine: { slot, wish } };
             plantDialog.close();
             village.focus(slot);
             toast('🎄 나만의 소원 나무를 심었어요!');
@@ -410,12 +399,6 @@ if (village) {
         if (slot === undefined) return;
         village.focus(slot);
         pick(slot);
-    });
-    byId('next-day').addEventListener('click', () => {
-        if (busy || !garden.mine || mode !== 'demo') return;
-        garden = { ...garden, watered: [], targets: targetsFor(garden.trees, garden.mine.slot) };
-        syncView();
-        toast('다음 테스트 날이에요. 다시 물을 줄 수 있어요.');
     });
     maxPreview.addEventListener('click', () => {
         if (busy) return;
