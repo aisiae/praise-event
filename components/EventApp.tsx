@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { signInWithEmailAndPassword, signOut } from "firebase/auth";
 import Image from "next/image";
 import BingoTest from "@/components/BingoTest";
+import WishGardenAdmin from "@/components/WishGardenAdmin";
 import BingoParticipant from "@/components/BingoParticipant";
 import { getFirebaseAuth } from "@/lib/firebase-client";
 import { quizPrizePreset } from "@/lib/settings";
@@ -150,6 +151,7 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
   const [targetId, setTargetId] = useState("");
   const [content, setContent] = useState("");
   const [adminOpen, setAdminOpen] = useState(false);
+  const [wishSelected, setWishSelected] = useState(false);
   const [bingoSelected, setBingoSelected] = useState<false|"test"|"live">(false);
   const [admin, setAdmin] = useState<AdminData | null>(null);
   const [adminLogin, setAdminLogin] = useState({ email: "", password: "" });
@@ -460,6 +462,7 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
   };
 
   const loadAdminEvent = async (eventId: string) => {
+    setWishSelected(false);
     setBingoSelected(false);
     setAdminTab("settings");
     const selected = admin?.events.find((event) => event.id === eventId);
@@ -551,9 +554,9 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
               </div>
               <div className="admin-workspace">
                 <aside className="event-sidebar panel">
-                  <div className="event-sidebar-head"><strong>이벤트 목록</strong><span>{admin.events.length + 2}</span></div>
+                  <div className="event-sidebar-head"><strong>이벤트 목록</strong><span>{admin.events.length + 3}</span></div>
                   <div className="event-list">
-                    {admin.events.map((event, index) => <div className={`event-list-row ${!bingoSelected && adminTab !== "employees" && admin.selectedEventId === event.id ? "active" : ""}`} key={event.id}>
+                    {admin.events.map((event, index) => <div className={`event-list-row ${!wishSelected && !bingoSelected && adminTab !== "employees" && admin.selectedEventId === event.id ? "active" : ""}`} key={event.id}>
                       <button className="event-select-button" disabled={busy} onClick={() => loadAdminEvent(event.id)}><span>{event.type === "quiz" ? "Q" : event.type === "instagram" ? "▣" : "♥"}</span><div><strong>{event.eventName}</strong><small>{event.status === "active" ? "진행 중" : event.status === "closed" ? "종료" : "준비 중"}</small></div></button>
                       <div className="event-row-actions">
                         <button aria-label={`${event.eventName} 위로 이동`} title="위로 이동" disabled={busy || index === 0} onClick={() => runAdmin({ action: "moveEvent", eventId: event.id, direction: "up" }, "이벤트 순서를 변경했습니다.")}>↑</button>
@@ -562,21 +565,26 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
                       </div>
                     </div>)}
                   </div>
-                  <div className={`event-list-row ${bingoSelected === "test" ? "active" : ""}`}><button className="event-select-button" onClick={() => { setBingoSelected("test"); setAdminTab("settings"); }}><span>▦</span><div><strong>[테스트] 오늘의 선택 빙고</strong><small>관리자 기능 테스트</small></div></button></div>
-                  <div className={`event-list-row ${bingoSelected === "live" ? "active" : ""}`}><button className="event-select-button" onClick={() => { setBingoSelected("live"); setAdminTab("settings"); }}><span>▦</span><div><strong>오늘의 선택 빙고</strong><small>운영용 · 일정 및 게시 별도 설정</small></div></button></div>
+                  <div className={`event-list-row ${bingoSelected === "test" ? "active" : ""}`}><button className="event-select-button" onClick={() => { setWishSelected(false); setBingoSelected("test"); setAdminTab("settings"); }}><span>▦</span><div><strong>[테스트] 오늘의 선택 빙고</strong><small>관리자 기능 테스트</small></div></button></div>
+                  <div className={`event-list-row ${bingoSelected === "live" ? "active" : ""}`}><button className="event-select-button" onClick={() => { setWishSelected(false); setBingoSelected("live"); setAdminTab("settings"); }}><span>▦</span><div><strong>오늘의 선택 빙고</strong><small>운영용 · 일정 및 게시 별도 설정</small></div></button></div>
+                  <div className={`event-list-row ${wishSelected ? "active" : ""}`}>
+                    <button className="event-select-button" onClick={() => { setWishSelected(true); setBingoSelected(false); setAdminTab("settings"); }}>
+                      <span>🎄</span><div><strong>[테스트] 2027 소원나무 마당</strong><small>공유 링크 · 모바일 미리보기</small></div>
+                    </button>
+                  </div>
                   <div className="event-create-actions">
                     <button className="button secondary" disabled={busy} onClick={() => runAdmin({ action: "createEvent", type: "quiz" }, "새 퀴즈 이벤트를 만들었습니다.")}>+ 퀴즈 이벤트</button>
                     <button className="button secondary" disabled={busy} onClick={() => runAdmin({ action: "createEvent", type: "praise" }, "새 칭찬 이벤트를 만들었습니다.")}>+ 칭찬 이벤트</button>
                     <button className="button secondary" disabled={busy} onClick={() => runAdmin({ action: "createEvent", type: "instagram" }, "새 나도 인스타 이벤트를 만들었습니다.")}>+ 사진 이벤트</button>
-                    <button className="button secondary" disabled={busy || !!bingoSelected} onClick={() => runAdmin({ action: "copyEvent" }, "이벤트 설정을 복사했습니다.")}>선택 이벤트 복사</button>
+                    <button className="button secondary" disabled={busy || wishSelected || !!bingoSelected} onClick={() => runAdmin({ action: "copyEvent" }, "이벤트 설정을 복사했습니다.")}>선택 이벤트 복사</button>
                   </div>
                   <div className="common-admin-nav">
                     <span>공통 관리</span>
-                    <button className={adminTab === "employees" ? "active" : ""} onClick={() => { setBingoSelected(false); setAdminTab("employees"); }}><strong>👥 명단 관리</strong><small>모든 이벤트에서 함께 사용</small></button>
+                    <button className={adminTab === "employees" ? "active" : ""} onClick={() => { setWishSelected(false); setBingoSelected(false); setAdminTab("employees"); }}><strong>👥 명단 관리</strong><small>모든 이벤트에서 함께 사용</small></button>
                   </div>
                 </aside>
                 <div className="admin-content">
-              {bingoSelected ? <BingoTest adminMode mode={bingoSelected || "test"} key={bingoSelected || "none"} onPublicationChange={refresh} /> : <>
+              {wishSelected ? <WishGardenAdmin /> : bingoSelected ? <BingoTest adminMode mode={bingoSelected || "test"} key={bingoSelected || "none"} onPublicationChange={refresh} /> : <>
               <nav className="admin-tabs" aria-label="관리자 메뉴">
                 {([
                   ["settings", "이벤트 설정"],
