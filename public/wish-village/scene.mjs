@@ -649,35 +649,54 @@ export function createVillage(container, { onPick, onNear }) {
         const treeGroup = new THREE.Group();
         const scale = .66 + growth * .014;
         const layers = Math.max(1, growth);
-        const step = Math.min(.66, .24 + 1.6 / layers);
+        const step = Math.min(.63, .18 + 1.3 / layers);
         const trunk = new THREE.Mesh(new THREE.CylinderGeometry(.14, .24, .78, 16),
             new THREE.MeshStandardMaterial({ color: 0x4a2c18, roughness: .85 }));
         trunk.position.y = .39;
         trunk.castShadow = true;
         treeGroup.add(trunk);
 
-        const foliageColors = [0x245640, 0x327458, 0x438c69, 0x58a982];
         const palette = [0xef4444, 0xfbbf24, 0x38bdf8, 0xf472b6, 0xa78bfa, 0xfb923c];
+        const lowerGreen = new THREE.Color(0x235c45);
+        const upperGreen = new THREE.Color(0x4c9975);
         let top = 0;
+        let widest = 0;
         for (let tier = 0; tier < layers; tier++) {
-            const taper = 1 - tier / layers;
-            const radius = (.48 + growth * .039) * (.16 + taper * .84);
+            const progress = tier / Math.max(1, layers - 1);
+            const spread = .38 + .65 * Math.pow(Math.cos(progress * Math.PI / 2), .76);
+            const radius = (.53 + growth * .049) * spread * (.96 + .04 * Math.cos(tier * 2.3));
             const base = .56 + tier * step;
-            const height = tier === layers - 1 ? Math.max(.45, radius * 1.8) : step + .13;
-            const upperRadius = tier === layers - 1 ? 0 : radius * .77;
-            const mesh = new THREE.Mesh(new THREE.CylinderGeometry(upperRadius, radius, height, 24),
-                new THREE.MeshStandardMaterial({ color: foliageColors[tier % foliageColors.length], roughness: .75 }));
+            const crown = tier === layers - 1;
+            const height = crown ? Math.max(.44, radius * 1.08) : step + .22;
+            const profile = [[.14, 0], [.86, .03], [1, .21], [.91, .48], [.73, .76], [crown ? .38 : .59, .95], [0, 1]];
+            const geometry = new THREE.LatheGeometry(profile.map(([r, y]) => new THREE.Vector2(r * radius, y * height)), 30);
+            const positions = geometry.attributes.position;
+            for (let vertex = 0; vertex < positions.count; vertex++) {
+                const x = positions.getX(vertex);
+                const z = positions.getZ(vertex);
+                const y = positions.getY(vertex);
+                const angle = Math.atan2(x, z);
+                const edge = Math.min(1, Math.hypot(x, z) / radius);
+                const branch = Math.cos(angle * 5 + tier * 1.9) * .06 + Math.sin(angle * 3 - tier) * .035;
+                positions.setXYZ(vertex, x * (1 + branch), y + branch * edge * .65, z * (1 + branch));
+            }
+            geometry.computeVertexNormals();
+            const mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({
+                color: lowerGreen.clone().lerp(upperGreen, progress * .8 + (tier % 3) * .045),
+                roughness: .84
+            }));
             mesh.name = growth ? 'growth-tier' : 'seedling';
-            mesh.position.y = base + height / 2;
+            mesh.position.y = base;
             mesh.castShadow = mesh.receiveShadow = true;
             treeGroup.add(mesh);
             top = base + height;
+            widest = Math.max(widest, radius);
 
             // Start low and spread added decorations around the visible branches.
             for (let index = tier; index < Math.min(ornamentCount, 40); index += layers) {
                 const angle = index * 2.399963;
                 const ornament = createOrnament(index % 5, palette[index % palette.length]);
-                ornament.position.set(Math.cos(angle) * radius * .94, base + .12, Math.sin(angle) * radius * .94);
+                ornament.position.set(Math.cos(angle) * radius * 1.02, base + height * .27, Math.sin(angle) * radius * 1.02);
                 ornament.rotation.y = Math.PI / 2 - angle;
                 treeGroup.add(ornament);
             }
@@ -712,6 +731,7 @@ export function createVillage(container, { onPick, onNear }) {
     
         treeGroup.scale.setScalar(scale);
         treeGroup.userData.height = top + .35;
+        treeGroup.userData.radius = widest * 1.1;
         return treeGroup;
     }
 
@@ -993,7 +1013,7 @@ export function createVillage(container, { onPick, onNear }) {
                 meshGroup.add(label);
             }
             const hitMesh = new THREE.Mesh(
-                new THREE.CylinderGeometry(.42 * scale, (1.05 + growth * .028) * scale, height, 16),
+                new THREE.CylinderGeometry(meshGroup.userData.radius * .58 * scale, meshGroup.userData.radius * scale, height, 20),
                 new THREE.MeshBasicMaterial({ visible: false })
             );
             hitMesh.position.set(slot.x, height / 2, slot.z);

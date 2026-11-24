@@ -68,6 +68,15 @@ function actionFor(slot) {
     return { action: 'decorate', label: '🎁 장식 달아주기', color: 'amber' };
 }
 
+function renderActionLabel(button, action) {
+    button.textContent = action?.label ?? '';
+    if (action?.action !== 'water' && action?.action !== 'decorate' && action?.action !== 'plant') return;
+    const key = document.createElement('kbd');
+    key.className = 'action-key';
+    key.textContent = 'R';
+    button.append(key);
+}
+
 function showNearby(slot) {
     nearby = slot;
     const action = slot < 0 || !canPlay || preview ? null : actionFor(slot);
@@ -76,7 +85,7 @@ function showNearby(slot) {
     lastActionLabel = label;
     nearButton.hidden = !label;
     nearButton.disabled = !action?.action;
-    nearButton.textContent = label;
+    renderActionLabel(nearButton, action);
     nearButton.className = 'action ' + (action?.color ?? 'quiet');
 }
 
@@ -150,7 +159,7 @@ function renderDetail() {
     byId('detail-wish').textContent = mine ? garden.mine.wish : '';
     byId('detail-wish').hidden = !mine;
     const button = byId('detail-action');
-    button.textContent = action.label;
+    renderActionLabel(button, action);
     button.className = 'action ' + (action.color ?? 'quiet');
     button.disabled = !action.action || busy;
 }
@@ -355,7 +364,7 @@ if (village) {
 
     window.addEventListener('keydown', event => {
         if (event.target instanceof HTMLElement && event.target.matches('input, textarea')) return;
-        if (event.code === 'KeyE' && !event.repeat && (canPlay || detailDialog.open)) {
+        if (event.code === 'KeyR' && !event.repeat && !event.ctrlKey && !event.metaKey && !event.altKey && (canPlay || detailDialog.open)) {
             event.preventDefault();
             tryAction(detailDialog.open ? selected : nearby);
         }

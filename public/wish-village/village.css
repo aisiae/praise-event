@@ -74,6 +74,7 @@ h1 { color:#6ee7b7; font-size:16px; font-weight:900; letter-spacing:-.035em; }
 .modal label,.error { display:grid; gap:4px; color:#cbd5e1; font-size:12px; }
 .modal input,.modal textarea { width:100%; padding:10px 12px; color:white; background:#0f172acc; border:1px solid #ffffff26; border-radius:12px; }
 .action { border-radius:12px; padding:10px 14px; min-height:43px; font-weight:700; }
+.action-key { display:inline-grid; place-items:center; margin-left:8px; min-width:24px; height:23px; padding-inline:4px; border:1px solid #ffffff8a; border-radius:5px; background:#0003; font:700 12px system-ui,sans-serif; vertical-align:middle; }
 .emerald { background:linear-gradient(110deg,#059669,#0f766e); }
 .sky { background:linear-gradient(110deg,#0284c7,#2563eb); }
 .amber { background:linear-gradient(110deg,#b45309,#c2410c); }
@@ -88,6 +89,7 @@ h1 { color:#6ee7b7; font-size:16px; font-weight:900; letter-spacing:-.035em; }
 #detail-action { width:100%; }
 .error { margin-top:10px; color:#fecaca; }
 @media (max-width:680px),(pointer:coarse) {
+    :root { --controls-bottom:calc(24px + env(safe-area-inset-bottom, 0px)); }
     .hud { top:max(9px,env(safe-area-inset-top)); left:9px; width:min(330px,calc(100% - 101px)); gap:5px; }
     .hud-card { padding:9px; }
     h1 { font-size:12px; }
@@ -97,13 +99,14 @@ h1 { color:#6ee7b7; font-size:16px; font-weight:900; letter-spacing:-.035em; }
     .help { padding:5px 7px; }
     .stats { gap:4px; padding-top:5px; margin-top:5px; }
     .stats div { padding:4px; gap:3px; }
-    .desktop-help,.movement { display:none; }
+    .desktop-help,.movement,.action-key { display:none; }
     .mobile-help { display:inline; }
     .zoom { top:max(9px,env(safe-area-inset-top)); right:9px; }
     .zoom .btn-control { width:39px; height:39px; }
-    .joystick { position:fixed; left:max(13px,env(safe-area-inset-left)); bottom:max(16px,env(safe-area-inset-bottom)); display:grid; place-items:center; width:92px; height:92px; border-radius:50%; touch-action:none; user-select:none; }
+    .joystick { position:fixed; left:max(13px,env(safe-area-inset-left)); bottom:var(--controls-bottom); display:grid; place-items:center; width:92px; height:92px; border-radius:50%; touch-action:none; user-select:none; }
     .joystick span { display:grid; place-items:center; width:42px; height:42px; border-radius:50%; color:#18354c; background:#ebf6fc; font-size:21px; transform:translate(var(--dx,0),var(--dy,0)); pointer-events:none; }
-    .shortcuts { right:max(13px,env(safe-area-inset-right)); bottom:max(16px,env(safe-area-inset-bottom)); max-width:calc(100% - 130px); }
+    .shortcuts { right:max(13px,env(safe-area-inset-right)); bottom:var(--controls-bottom); max-width:calc(100% - 130px); }
+    .shortcuts button { max-width:100%; overflow-wrap:anywhere; }
     .shortcut { padding:6px 9px; min-height:34px; font-size:11px; }
-    #toast-container { bottom:calc(max(16px,env(safe-area-inset-bottom)) + 100px); }
+    #toast-container { bottom:calc(var(--controls-bottom) + 100px); }
 }
