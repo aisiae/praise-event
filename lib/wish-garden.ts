@@ -7,10 +7,18 @@ export type Garden = {
   watered: number[];
 };
 
-export const slots = Array.from({ length: 40 }, (_, i) => ({
-  x: 82 + (i % 8) * 112 + (i % 8 >= 4 ? 86 : 0),
-  y: 230 + Math.floor(i / 8) * 102,
-}));
+export const gardenBounds = { left: 48, right: 1432, back: 184, front: 1060 };
+export const pathCenter = 740;
+export const pathX = (z: number) => pathCenter + Math.sin(z / 116) * 18;
+
+// The array index is the saved plot ID. Keep it stable when moving a plot.
+export const slots = [
+  [112, 265], [276, 247], [421, 291], [593, 231], [893, 239], [1031, 282], [1210, 246], [1360, 305],
+  [158, 421], [318, 461], [470, 413], [604, 382], [864, 425], [1058, 438], [1173, 398], [1322, 474],
+  [100, 591], [255, 567], [422, 603], [584, 539], [898, 567], [1019, 607], [1190, 558], [1381, 620],
+  [181, 733], [324, 778], [465, 710], [616, 722], [873, 723], [1070, 749], [1227, 713], [1310, 797],
+  [111, 918], [268, 961], [433, 870], [592, 979], [909, 951], [1034, 900], [1182, 881], [1367, 952],
+].map(([x, y]) => ({ x, y }));
 export const stages = ["작은 묘목", "자란 줄기", "풍성한 잎", "크리스마스 소나무", "장식한 크리스마스 트리"];
 export const stageFor = (count: number) => Math.min(4, Math.floor(count / 3));
 
@@ -37,7 +45,8 @@ export type WishGardenStatus = {
 
 export const maxOwnWater = 23;
 export const maxFriendWater = 39 * maxOwnWater;
-export const treeSize = (tree: Tree) => 24 + Math.min(maxOwnWater, tree.ownWater ?? 0) * 2.6;
+export const growthFor = (tree?: Tree) => Math.min(maxOwnWater, tree?.ownWater ?? 0);
+export const treeSize = (tree: Tree) => 24 + growthFor(tree) * 2.6;
 
 export type WishPrize = { name: string; amount: number; quantity: number };
 export type WishDraw = { drawnAt: number; eligible: number; winners: { name: string; prize: string; amount: number; score?: number }[] };

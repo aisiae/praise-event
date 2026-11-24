@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { normalizeEmployeeId, normalizeEmployeeName, todaySeoul } from "@/lib/utils";
-import { fillTargets, slots, type Garden, type Tree, type WishGardenStatus } from "@/lib/wish-garden";
+import { fillTargets, growthFor, maxOwnWater, slots, type Garden, type Tree, type WishGardenStatus } from "@/lib/wish-garden";
 
 const cookie = "wish-tree-test-session";
 const hash = (token: string) => createHash("sha256").update(token).digest("hex");
@@ -43,16 +43,18 @@ async function garden(id: string, action?: "plant" | "water" | "decorate", slot?
     if (action === "water" || action === "decorate") {
       const plot = plots.find(item => item.slot === slot);
       if (!own || !plot) throw new Error("나무를 확인해 주세요.");
+      if (visit.watered.includes(plot.slot)) throw new Error(action === "water" ? "오늘은 이미 내 나무에 물을 줬어요." : "오늘은 이 나무에 이미 장식을 달았어요.");
       if (action === "water") {
         if (plot.owner !== id) throw new Error("내 나무에만 물을 줄 수 있어요.");
-        plot.ownWater = (plot.ownWater ?? 0) + 1;
+        if (growthFor(plot) >= maxOwnWater) throw new Error("내 나무가 23칸 모두 자랐어요.");
+        plot.ownWater = growthFor(plot) + 1;
       } else {
         if (plot.owner === id || !visit.targets.includes(plot.slot)) throw new Error("오늘 장식을 달 수 있는 동료 나무를 확인해 주세요.");
         plot.friendWater = (plot.friendWater ?? 0) + 1;
         own.ornamentsGiven = (own.ornamentsGiven ?? 0) + 1;
       }
       plot.count += 1;
-      if (!visit.watered.includes(plot.slot)) visit.watered.push(plot.slot);
+      visit.watered.push(plot.slot);
     }
     if (action) tx.set(root, { plots }, { merge: true });
     if (own && (action || JSON.stringify(old) !== JSON.stringify(visit))) tx.set(visitRef, visit);

@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useEffectEvent, useMemo, useRef, useState, type FormEvent } from "react";
-import { fillTargets, slots, maxOwnWater, maxFriendWater, wishScore, type Garden } from "@/lib/wish-garden";
+import { fillTargets, gardenBounds, growthFor, pathX, slots, maxOwnWater, maxFriendWater, wishScore, type Garden } from "@/lib/wish-garden";
 import WishScene from "./WishScene";
 import styles from "./WishGarden.module.css";
 
 const empty: Garden = { signedIn: false, trees: [], mine: null, targets: [], watered: [] };
-const start = { x: 518, y: 744 };
+const start = { x: pathX(gardenBounds.front - 16), y: gardenBounds.front - 16 };
+const growthCells = Array.from({ length: maxOwnWater }, (_, index) => index + 1);
 const demoTrees = [2, 5, 11, 19].map((ownWater, index) => ({ slot: [34, 37, 28, 19][index], count: ownWater * 2, ownWater, friendWater: ownWater }));
 
 export default function WishGarden() {
@@ -51,8 +52,11 @@ export default function WishGarden() {
   const closeSlot = slots.findIndex(point => Math.hypot(point.x - position.x, point.y + 12 - position.y) < 46);
   const closeTree = treesBySlot.get(closeSlot);
   const isOwn = garden.mine?.slot === closeSlot;
-  const canWater = !!closeTree && (garden.mine?.slot === closeSlot || garden.targets.includes(closeSlot));
+  const alreadyActed = garden.watered.includes(closeSlot);
+  const fullyGrown = isOwn && growthFor(closeTree) === maxOwnWater;
+  const canWater = !!closeTree && !alreadyActed && !fullyGrown && (isOwn || garden.targets.includes(closeSlot));
   const ownTree = garden.mine ? treesBySlot.get(garden.mine.slot) : undefined;
+  const growth = showMax ? maxOwnWater : growthFor(ownTree);
   const previewSlot = garden.mine?.slot ?? 35;
   const visibleGarden = useMemo(() => {
     if (!showMax) return garden;
@@ -117,7 +121,7 @@ export default function WishGarden() {
       splashTimer.current = setTimeout(() => setSplash(null), 850);
       const tree = next.trees.find(tree => tree.slot === closeSlot)!;
       setNote(garden.mine?.slot === closeSlot
-        ? `내 나무 크기 ${Math.min(maxOwnWater, tree.ownWater ?? 0)}/${maxOwnWater} · 물주기 ${tree.ownWater ?? 0}회`
+        ? growthFor(tree) === maxOwnWater ? "23칸을 모두 채웠어요! 내 소원나무가 다 자랐어요." : `물을 줬어요! 내 나무 성장 ${growthFor(tree)}/${maxOwnWater}칸`
         : `동료 나무에 장식을 달았어요! 누적 ${tree.friendWater ?? 0}개`);
     });
   }
@@ -163,7 +167,7 @@ export default function WishGarden() {
       })}>{demo ? "체험 나가기" : "로그아웃"}</button>}
     </header>
     {!active && <section className={styles.entry}>
-      <h2>눈 내린 산사에 소원나무를 심어 보세요</h2>
+      <h2>오로라 빛나는 북유럽 산타마을에 소원나무를 심어 보세요</h2>
       <p>직원으로 로그인하면 다른 직원이 심은 익명 나무도 같은 마당에서 볼 수 있어요.</p>
       <form onSubmit={login}>
         <input required name="name" aria-label="직원 이름" placeholder="직원 이름" maxLength={100} />
@@ -173,18 +177,25 @@ export default function WishGarden() {
       <button disabled={busy || checking} onClick={() => { setDemo(true); setGarden({ ...empty, trees: demoTrees }); setNote(""); }}>로그인 없이 조작 체험</button>
     </section>}
     {active && <div className={styles.toolbar}>
-      <span>{showMax ? `최대 성장 ${maxOwnWater}회 · 장식 ${maxFriendWater}개` : `내 나무 크기 ${Math.min(maxOwnWater, ownTree?.ownWater ?? 0)}/${maxOwnWater} · 장식 ${ownTree?.friendWater ?? 0}개`}</span>
+      <span>나무 심은 자리 <strong>{garden.trees.length}/{slots.length}</strong></span>
+      {(ownTree || showMax) && <span>받은 장식 <strong>{showMax ? maxFriendWater : ownTree?.friendWater ?? 0}개</strong></span>}
       {!showMax && ownTree && <span>내 점수 {wishScore(ownTree)}점</span>}
-      <span>동료 나무 {garden.targets.filter(slot => garden.watered.includes(slot)).length}/{garden.targets.length}</span>
+      {ownTree && <span>오늘 달아준 장식 {garden.targets.filter(slot => garden.watered.includes(slot)).length}/{garden.targets.length}</span>}
       {garden.mine && <button onClick={() => {
         const point = slots[garden.mine!.slot];
         setPosition({ x: point.x, y: point.y + 30 });
       }}>내 나무 찾기</button>}
-      {demo && garden.mine && !showMax && <button onClick={nextDemoDay}>랜덤 대상 다시 뽑기</button>}
+      {demo && garden.mine && !showMax && <button disabled={busy} onClick={nextDemoDay}>다음 테스트 날</button>}
       <button aria-pressed={showMax} onClick={() => {
         setShowMax(value => !value);
-        if (!showMax) setPosition({ x: slots[previewSlot].x, y: slots[previewSlot].y + 92 });
+        if (!showMax) setPosition({ x: slots[previewSlot].x, y: Math.min(gardenBounds.front, slots[previewSlot].y + 92) });
       }}>{showMax ? "최대 성장 미리보기 닫기" : "23일 최대 성장 미리보기"}</button>
+      <div className={styles.growth}>
+        <div><strong>{showMax ? "최대 성장 미리보기" : "내 소원나무 성장"}</strong><span>{growth}/{maxOwnWater}칸</span></div>
+        <div className={styles.growthCells} role="progressbar" aria-label="내 소원나무 성장" aria-valuemin={0} aria-valuemax={maxOwnWater} aria-valuenow={growth}>
+          {growthCells.map(day => <span key={day} data-filled={day <= growth} aria-hidden="true" />)}
+        </div>
+      </div>
     </div>}
     <div className={styles.scene}>
       <WishScene key={String(showMax)} active={active} blocked={plantSlot !== null} garden={visibleGarden} position={position} onMove={setPosition} splash={splash} />
@@ -192,6 +203,7 @@ export default function WishGarden() {
         <div className={styles.action}>
           {!garden.mine && closeSlot >= 0 && !closeTree && <button onClick={() => setPlantSlot(closeSlot)}>여기에 소원나무 심기 <kbd>E</kbd></button>}
           {canWater && <button disabled={busy} onClick={water}>{isOwn ? "💧 물주기" : "✦ 장식 달아주기"} <kbd>E</kbd></button>}
+          {isOwn && (fullyGrown || alreadyActed) && <span className={styles.actionStatus}>{fullyGrown ? "성장 완료" : "오늘 물주기 완료"}</span>}
         </div>
       </>}
     </div>
