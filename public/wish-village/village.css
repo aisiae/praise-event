@@ -101,9 +101,9 @@ h1 { color:#6ee7b7; font-size:16px; font-weight:900; letter-spacing:-.035em; }
     .mobile-help { display:inline; }
     .zoom { top:max(9px,env(safe-area-inset-top)); right:9px; }
     .zoom .btn-control { width:39px; height:39px; }
-    .joystick { position:fixed; right:max(13px,env(safe-area-inset-right)); bottom:max(16px,env(safe-area-inset-bottom)); display:grid; place-items:center; width:92px; height:92px; border-radius:50%; touch-action:none; user-select:none; }
+    .joystick { position:fixed; left:max(13px,env(safe-area-inset-left)); bottom:max(16px,env(safe-area-inset-bottom)); display:grid; place-items:center; width:92px; height:92px; border-radius:50%; touch-action:none; user-select:none; }
     .joystick span { display:grid; place-items:center; width:42px; height:42px; border-radius:50%; color:#18354c; background:#ebf6fc; font-size:21px; transform:translate(var(--dx,0),var(--dy,0)); pointer-events:none; }
-    .shortcuts { right:max(13px,env(safe-area-inset-right)); bottom:119px; }
+    .shortcuts { right:max(13px,env(safe-area-inset-right)); bottom:max(16px,env(safe-area-inset-bottom)); max-width:calc(100% - 130px); }
     .shortcut { padding:6px 9px; min-height:34px; font-size:11px; }
-    #toast-container { bottom:14px; left:10px; transform:none; max-width:calc(100vw - 124px); }
+    #toast-container { bottom:calc(max(16px,env(safe-area-inset-bottom)) + 100px); }
 }
