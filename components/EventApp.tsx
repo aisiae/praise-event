@@ -126,7 +126,7 @@ function PraiseCard({ praise, onOpen, showWriter }: { praise: Praise; onOpen: ()
   );
 }
 
-export default function EventApp({ initialData }: { initialData: PublicData }) {
+export default function EventApp({ initialData, initialAdminOpen = false }: { initialData: PublicData; initialAdminOpen?: boolean }) {
   const [data, setData] = useState<PublicData>(initialData);
   const [user, setUser] = useState<Employee | null>(initialData.preview ? { employeeId: "preview", name: "미리보기" } : null);
   const [login, setLogin] = useState({ name: "", employeeId: "" });
@@ -150,7 +150,7 @@ export default function EventApp({ initialData }: { initialData: PublicData }) {
   const [notice, setNotice] = useState("");
   const [targetId, setTargetId] = useState("");
   const [content, setContent] = useState("");
-  const [adminOpen, setAdminOpen] = useState(false);
+  const [adminOpen, setAdminOpen] = useState(initialAdminOpen);
   const [wishSelected, setWishSelected] = useState(false);
   const [bingoSelected, setBingoSelected] = useState<false|"test"|"live">(false);
   const [admin, setAdmin] = useState<AdminData | null>(null);

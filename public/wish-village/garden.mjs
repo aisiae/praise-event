@@ -1,8 +1,8 @@
-import { createVillage } from './scene.mjs';
+import { createVillage, shapedOrnamentLimit } from './scene.mjs';
 
 const maximum = 23;
 const ornamentLimit = 3;
-const demoOrnamentLimit = 40;
+const previewOrnamentCount = 850;
 const adminTestRequested = new URLSearchParams(window.location.search).has('admin-test');
 let adminTestAllowed = false;
 const api = '/api/wish-tree-test';
@@ -22,7 +22,7 @@ const growthOf = tree => Math.min(maximum, tree?.ownWater ?? 0);
 const treeAt = slot => garden.trees.find(tree => tree.slot === slot);
 const testTreeSlot = 10;
 
-let mode = 'demo';
+let mode = 'entry';
 let garden = { ...empty(), trees: sampleTrees };
 let preview = false;
 let busy = false;
@@ -61,9 +61,7 @@ function actionFor(slot) {
         if (mode === 'live' && garden.watered.includes(slot)) return { label: '오늘 물주기 완료 ✓' };
         return { action: 'water', label: '💧 소원 나무에 물주기', color: 'sky' };
     }
-    if (mode !== 'live') {
-        if (mode === 'demo' && (tree.friendWater ?? 0) >= demoOrnamentLimit) return { label: '체험 장식 40개를 채웠어요 ✓' };
-    } else {
+    if (mode === 'live') {
         if (!garden.mine) return { label: '먼저 내 소원 나무를 심어 주세요' };
         if (garden.watered.includes(slot)) return { label: '오늘 장식 달기 완료 ✓' };
         if (!garden.targets.includes(slot)) return { label: '오늘의 장식 대상이 아닙니다' };
@@ -73,8 +71,7 @@ function actionFor(slot) {
 
 function decorationSlots() {
     if (mode !== 'live') {
-        return garden.trees.filter(tree => tree.slot !== garden.mine?.slot &&
-            (mode === 'admin-test' || (tree.friendWater ?? 0) < demoOrnamentLimit)).map(tree => tree.slot);
+        return garden.trees.filter(tree => tree.slot !== garden.mine?.slot).map(tree => tree.slot);
     }
     return garden.targets.filter(slot => !garden.watered.includes(slot));
 }
@@ -104,7 +101,7 @@ function syncView() {
     const own = treeAt(garden.mine?.slot);
     const shownGrowth = preview ? maximum : growthOf(own);
     const targets = decorationSlots();
-    byId('player-label').textContent = mode === 'admin-test' ? '관리자 테스트' : mode === 'demo' ? '조작 체험' : garden.name + ' 님';
+    byId('player-label').textContent = mode === 'admin-test' ? '관리자 테스트' : mode === 'live' ? garden.name + ' 님' : '12월 소원나무 이벤트';
     byId('planted-count').textContent = garden.trees.length + ' / ' + village.capacity + '그루';
     byId('my-tree-status').textContent = own ? (growthOf(own) === maximum ? '성장 완료' : growthOf(own) + '단 성장') : '심기 가능';
     byId('ornament-count').textContent = mode === 'live' ? targets.length + ' / ' + ornamentLimit + '회' : '반복 체험';
@@ -114,17 +111,17 @@ function syncView() {
     growthCells.setAttribute('aria-valuenow', String(shownGrowth));
     Array.from(growthCells.children).forEach((cell, index) => cell.classList.toggle('filled', index < shownGrowth));
     byId('leave').hidden = false;
-    byId('leave').textContent = mode === 'admin-test' ? '테스트 다시 시작' : mode === 'demo' ? '직원 로그인' : '로그아웃';
+    byId('leave').textContent = mode === 'admin-test' ? '테스트 다시 시작' : '로그아웃';
     byId('find-target').hidden = !targets.length || preview;
     byId('open-admin-test').hidden = !adminTestAllowed || mode === 'admin-test';
     byId('find-target').textContent = mode === 'live' ? '🎁 오늘 장식할 나무 찾기' : '🎁 장식 체험하기';
     maxPreview.hidden = false;
-    maxPreview.textContent = preview ? '최대 성장 미리보기 닫기' : '23일 최대 성장 미리보기';
+    maxPreview.textContent = preview ? '최대 성장 미리보기 닫기' : '23일 성장·장식 미리보기';
     maxPreview.setAttribute('aria-pressed', String(preview));
 
     const previewSlot = garden.mine?.slot ?? 10;
     const trees = preview
-        ? [...garden.trees.filter(tree => tree.slot !== previewSlot), { slot: previewSlot, ownWater: maximum, friendWater: 40 }]
+        ? [...garden.trees.filter(tree => tree.slot !== previewSlot), { slot: previewSlot, ownWater: maximum, friendWater: previewOrnamentCount }]
         : garden.trees;
     village.updateTrees(trees, garden.mine, preview ? [] : targets);
     showNearby(nearby);
@@ -303,7 +300,7 @@ try {
     console.error(error);
     byId('loading-error').hidden = false;
     byId('loading-error').textContent = '3D 정원을 불러오지 못했어요. 페이지를 새로고침하거나 WebGL을 지원하는 브라우저로 열어 주세요.';
-    byId('login-submit').disabled = byId('demo').disabled = true;
+    byId('login-submit').disabled = true;
     entry.close();
     entry.showModal();
     entry.addEventListener('cancel', event => event.preventDefault());
@@ -312,7 +309,7 @@ try {
 if (village) {
     entry.close();
     showDialog(entry);
-    byId('login-submit').disabled = byId('demo').disabled = adminTestRequested;
+    byId('login-submit').disabled = adminTestRequested;
     if (adminTestRequested && adminTestAllowed) startAdminTest();
     else syncView();
     entry.addEventListener('cancel', event => event.preventDefault());
@@ -327,7 +324,7 @@ if (village) {
                 garden = data;
                 syncView();
             } else {
-                mode = 'demo';
+                mode = 'entry';
                 garden = { ...empty(), trees: sampleTrees };
                 preview = false;
                 syncView();
@@ -339,13 +336,10 @@ if (village) {
     byId('leave').addEventListener('click', () => {
         if (mode === 'admin-test') {
             startAdminTest();
-        } else if (mode === 'demo') {
-            byId('loading-error').hidden = true;
-            showDialog(entry);
-        } else {
+        } else if (mode === 'live') {
             void run(async () => {
                 await send({ action: 'logout' });
-                mode = 'demo';
+                mode = 'entry';
                 garden = { ...empty(), trees: sampleTrees };
                 preview = false;
                 showDialog(entry);
@@ -366,7 +360,6 @@ if (village) {
             entry.close();
         });
     });
-    byId('demo').addEventListener('click', () => { if (!adminTestRequested) entry.close(); });
     byId('plant-form').addEventListener('submit', event => {
         event.preventDefault();
         const wish = byId('wish-input').value.trim();
@@ -446,8 +439,11 @@ if (village) {
     maxPreview.addEventListener('click', () => {
         if (busy) return;
         preview = !preview;
-        if (preview) village.focus(garden.mine?.slot ?? 10);
         syncView();
+        if (preview) {
+            village.focus(garden.mine?.slot ?? 10);
+            toast(`모양 장식 ${shapedOrnamentLimit}개 · 작은 전구 ${previewOrnamentCount - shapedOrnamentLimit}개`);
+        }
     });
     byId('zoom-in').addEventListener('click', () => village.zoom(-3));
     byId('zoom-out').addEventListener('click', () => village.zoom(3));

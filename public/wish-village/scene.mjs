@@ -1,4 +1,6 @@
 /* The scene geometry, materials, lighting and orbit camera come from the supplied Santa Village design. */
+export const shapedOrnamentLimit = 50;
+
 export function createVillage(container, { onPick, onNear }) {
     const THREE = window.THREE;
     if (!THREE) throw new Error("Three.js failed to load");
@@ -645,6 +647,31 @@ export function createVillage(container, { onPick, onNear }) {
      * ============================================================================
      */
 
+    function addStringLights(treeGroup, count, branches) {
+        if (count <= 0) return;
+        const bulbs = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0),
+            new THREE.MeshBasicMaterial({ color: 0xffffff }), count);
+        bulbs.name = 'mini-bulbs';
+        // r128 does not calculate per-instance bounds for culling.
+        bulbs.frustumCulled = false;
+        const transform = new THREE.Matrix4();
+        const colors = [0xffdf91, 0xffeec7, 0xfc7975, 0x84dfff, 0xffc36d].map(color => new THREE.Color(color));
+        for (let index = 0; index < count; index++) {
+            const { radius, base, height, rotation } = branches[index % branches.length];
+            const row = Math.floor(index / branches.length);
+            const angle = row * 2.399963 + rotation + index % branches.length * .55;
+            const level = .29 + (row * .618034 % 1) * .28;
+            const distance = radius * (1.02 - (level - .29) * .8);
+            const size = Math.min(.024, radius * .027);
+            transform.makeScale(size, size * 1.22, size);
+            transform.setPosition(Math.sin(angle) * distance, base + level * height, Math.cos(angle) * distance);
+            bulbs.setMatrixAt(index, transform);
+            bulbs.setColorAt(index, colors[(row * 3 + index % branches.length) % colors.length]);
+        }
+        bulbs.instanceMatrix.needsUpdate = true;
+        treeGroup.add(bulbs);
+    }
+
     function createStylizedPineTree(growth, ornamentCount, isMine) {
         const treeGroup = new THREE.Group();
         const scale = .66 + growth * .014;
@@ -663,6 +690,8 @@ export function createVillage(container, { onPick, onNear }) {
         const lowerGreen = new THREE.Color(0x41612b);
         const upperGreen = new THREE.Color(0x80a643);
         const top = trunkHeight + canopyHeight;
+        const branches = [];
+        const shapeCount = Math.min(ornamentCount, shapedOrnamentLimit);
         let widest = 0;
         for (let tier = 0; tier < layers; tier++) {
             const progress = tier / Math.max(1, layers - 1);
@@ -676,6 +705,7 @@ export function createVillage(container, { onPick, onNear }) {
             const geometry = new THREE.LatheGeometry(profile.map(([r, y]) => new THREE.Vector2(r * radius, y * height)), segments);
             const positions = geometry.attributes.position;
             const rotation = tier * Math.PI / 7;
+            branches.push({ radius, base, height, rotation });
             for (let slice = 0; slice <= segments; slice++) {
                 const tip = slice % 2 === 0;
                 const angle = slice / segments * Math.PI * 2 + rotation;
@@ -700,20 +730,19 @@ export function createVillage(container, { onPick, onNear }) {
             widest = Math.max(widest, radius);
 
             // Start low and spread added decorations around the visible branches.
-            const firstVisibleOrnament = Math.max(0, ornamentCount - 40);
-            for (let index = tier; index < Math.min(ornamentCount, 40); index += layers) {
+            for (let index = tier; index < shapeCount; index += layers) {
                 const branchIndex = Math.floor(index / layers);
                 const segment = branchIndex * 5 % segments;
                 const row = Math.floor(branchIndex / segments);
                 const angle = rotation + segment * Math.PI / 6 + row * .11;
-                const ordinal = firstVisibleOrnament + index;
-                const ornament = createOrnament(ordinal % 5, palette[ordinal % palette.length]);
+                const ornament = createOrnament(index % 5, palette[index % palette.length]);
                 const distance = radius * ((segment % 2 ? .85 : .97) - row * .12);
                 ornament.position.set(Math.sin(angle) * distance, base + height * (.20 + row * .14), Math.cos(angle) * distance);
                 ornament.rotation.y = angle;
                 treeGroup.add(ornament);
             }
         }
+        addStringLights(treeGroup, ornamentCount - shapeCount, branches);
 
         const starMat = new THREE.MeshStandardMaterial({
             color: 0xfef08a,
@@ -961,6 +990,7 @@ export function createVillage(container, { onPick, onNear }) {
     function disposeMesh(object) {
         scene.remove(object);
         object.traverse(child => {
+            if (child.isInstancedMesh) child.dispose();
             child.geometry?.dispose();
             child.material?.map?.dispose();
             child.material?.dispose();
