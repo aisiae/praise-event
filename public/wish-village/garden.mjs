@@ -54,6 +54,9 @@ function actionFor(slot) {
     const tree = treeAt(slot);
     if (!tree) return garden.mine ? null : { action: 'plant', label: '🌱 소원 나무 심기', color: 'emerald' };
     if (slot === garden.mine?.slot) {
+        if (mode === 'live' && adminTestAllowed && (garden.watered.includes(slot) || growthOf(tree) >= maximum)) {
+            return { action: 'test-water', label: '💧 관리자 테스트로 물주기', color: 'sky' };
+        }
         if (growthOf(tree) >= maximum) return { label: '성장 완료' };
         if (mode === 'live' && garden.watered.includes(slot)) return { label: '오늘 물주기 완료 ✓' };
         return { action: 'water', label: '💧 소원 나무에 물주기', color: 'sky' };
@@ -78,7 +81,7 @@ function decorationSlots() {
 
 function renderActionLabel(button, action) {
     button.textContent = action?.label ?? '';
-    if (action?.action !== 'water' && action?.action !== 'decorate' && action?.action !== 'plant') return;
+    if (!action?.action) return;
     const key = document.createElement('kbd');
     key.className = 'action-key';
     key.textContent = 'R';
@@ -113,6 +116,7 @@ function syncView() {
     byId('leave').hidden = false;
     byId('leave').textContent = mode === 'admin-test' ? '테스트 다시 시작' : mode === 'demo' ? '직원 로그인' : '로그아웃';
     byId('find-target').hidden = !targets.length || preview;
+    byId('open-admin-test').hidden = !adminTestAllowed || mode === 'admin-test';
     byId('find-target').textContent = mode === 'live' ? '🎁 오늘 장식할 나무 찾기' : '🎁 장식 체험하기';
     maxPreview.hidden = false;
     maxPreview.textContent = preview ? '최대 성장 미리보기 닫기' : '23일 최대 성장 미리보기';
@@ -228,7 +232,10 @@ async function run(operation) {
 function tryAction(slot) {
     if (preview || busy || slot < 0) return;
     const action = actionFor(slot)?.action;
-    if (action === 'plant') {
+    if (action === 'test-water') {
+        startAdminTest();
+        tryAction(testTreeSlot);
+    } else if (action === 'plant') {
         pick(slot);
     } else if (action === 'water' || action === 'decorate') {
         void run(async () => {
@@ -263,6 +270,8 @@ function tryAction(slot) {
 
 let village;
 function startAdminTest() {
+    if (!adminTestAllowed || busy) return;
+    if (detailDialog.open) detailDialog.close();
     mode = 'admin-test';
     garden = {
         ...empty(),
@@ -276,14 +285,16 @@ function startAdminTest() {
     village.focus(testTreeSlot);
 }
 
-if (adminTestRequested) {
-    window.addEventListener('message', event => {
-        if (window.parent === window || event.source !== window.parent || event.origin !== window.location.origin ||
-            event.data?.type !== 'wish-garden-admin-test' || adminTestAllowed) return;
-        adminTestAllowed = true;
-        if (village) startAdminTest();
-    });
-}
+window.addEventListener('message', event => {
+    if (window.parent === window || event.source !== window.parent || event.origin !== window.location.origin ||
+        event.data?.type !== 'wish-garden-admin-test' || typeof event.data.allowed !== 'boolean' ||
+        adminTestAllowed === event.data.allowed) return;
+    adminTestAllowed = event.data.allowed;
+    if (!village) return;
+    if (adminTestRequested && adminTestAllowed) startAdminTest();
+    else if (!adminTestAllowed && mode === 'admin-test') window.location.reload();
+    else syncView();
+});
 
 try {
     await import('./three-r128.min.js');
@@ -302,7 +313,7 @@ if (village) {
     entry.close();
     showDialog(entry);
     byId('login-submit').disabled = byId('demo').disabled = adminTestRequested;
-    if (adminTestAllowed) startAdminTest();
+    if (adminTestRequested && adminTestAllowed) startAdminTest();
     else syncView();
     entry.addEventListener('cancel', event => event.preventDefault());
 
@@ -377,6 +388,7 @@ if (village) {
         button.addEventListener('click', () => button.closest('dialog').close());
     });
     byId('detail-action').addEventListener('click', () => tryAction(selected));
+    byId('open-admin-test').addEventListener('click', startAdminTest);
     byId('edit-wish').addEventListener('click', () => {
         if (busy || selected !== garden.mine?.slot) return;
         detailDialog.querySelector('[role="alert"]').hidden = true;

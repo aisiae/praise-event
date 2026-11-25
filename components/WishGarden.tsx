@@ -9,7 +9,6 @@ export default function WishGarden({ adminTest }: { adminTest: boolean }) {
   const [access, setAccess] = useState<"loading" | "admin" | "denied">("loading");
 
   useEffect(() => {
-    if (!adminTest) return;
     const request = new AbortController();
     const auth = getFirebaseAuth();
     const unsubscribe = onAuthStateChanged(auth, async user => {
@@ -29,7 +28,11 @@ export default function WishGarden({ adminTest }: { adminTest: boolean }) {
       }
     });
     return () => { request.abort(); unsubscribe(); };
-  }, [adminTest]);
+  }, []);
+
+  useEffect(() => {
+    frame.current?.contentWindow?.postMessage({ type: "wish-garden-admin-test", allowed: access === "admin" }, window.location.origin);
+  }, [access]);
 
   useEffect(() => {
     const viewport = window.visualViewport;
@@ -58,9 +61,9 @@ export default function WishGarden({ adminTest }: { adminTest: boolean }) {
     ref={frame}
     title="2027 소원 나무 정원"
     src={adminTest ? "/wish-village/index.html?admin-test" : "/wish-village/index.html"}
-    onLoad={adminTest ? () => {
-      frame.current?.contentWindow?.postMessage({ type: "wish-garden-admin-test" }, window.location.origin);
-    } : undefined}
+    onLoad={() => {
+      frame.current?.contentWindow?.postMessage({ type: "wish-garden-admin-test", allowed: access === "admin" }, window.location.origin);
+    }}
     style={{ position: "fixed", top: 0, left: 0, width: "100%", height: "100dvh", border: 0, display: "block" }}
   />;
 }
