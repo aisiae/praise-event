@@ -100,6 +100,12 @@ h1 { color:#6ee7b7; font-size:16px; font-weight:900; letter-spacing:-.035em; }
 #overview-trees li { display:grid; gap:8px; padding:10px; border:1px solid #ffffff26; border-radius:12px; }
 #overview-trees button { justify-self:start; overflow-wrap:anywhere; }
 #overview-trees p { white-space:pre-wrap; overflow-wrap:anywhere; }
+.overview-metrics { display:grid; grid-template-columns:repeat(auto-fit,minmax(72px,1fr)); gap:6px; margin:0; }
+.overview-metrics div { display:grid; gap:3px; padding:6px 8px; background:#ffffff10; border-radius:8px; }
+.overview-metrics dt { color:#cbd5e1; font-size:11px; }
+.overview-metrics dd { margin:0; font-weight:700; }
+.overview-metrics div:last-child dd { color:#fcd34d; }
+#detail-overview-metrics { margin-bottom:12px; }
 @media (max-width:680px),(pointer:coarse) {
     :root {
         --controls-bottom:max(12px, env(safe-area-inset-bottom, 0px));

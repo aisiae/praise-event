@@ -1,5 +1,5 @@
 export type Tree = { slot: number; count: number; ownWater?: number; friendWater?: number; ornamentsGiven?: number };
-export type WishOverviewTree = Tree & { ownerName: string; wish: string };
+export type WishOverviewTree = Tree & { ownerName: string; wish: string; score: number };
 export type Garden = {
   signedIn: boolean;
   name?: string;

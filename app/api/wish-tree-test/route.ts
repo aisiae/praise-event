@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { normalizeEmployeeId, normalizeEmployeeName, todaySeoul } from "@/lib/utils";
-import { fillTargets, growthFor, maxOwnWater, slots, type Garden, type Tree, type WishGardenStatus, type WishOverviewTree } from "@/lib/wish-garden";
+import { fillTargets, growthFor, maxOwnWater, slots, wishScore, type Garden, type Tree, type WishGardenStatus, type WishOverviewTree } from "@/lib/wish-garden";
 
 import { wishGardenRoot, wishMode, type WishMode } from "@/lib/wish-garden-server";
 import { wishPublication } from "@/lib/wish-publication";
@@ -96,9 +96,10 @@ async function adminStatus(request: NextRequest, mode: WishMode) {
       const ownerIds = [...new Set(plots.map(plot => plot.owner))];
       const people = ownerIds.length ? await db.getAll(...ownerIds.map(id => db.collection("employees").doc(id))) : [];
       const names = new Map(people.map(person => [person.id, String(person.data()?.name ?? "")]));
-      const trees: WishOverviewTree[] = plots.map(({ slot, count, ownWater, friendWater, owner, wish }) => ({
-        slot, count, ownWater, friendWater, wish, ownerName: names.get(owner) || "이름 확인 불가",
-      }));
+      const trees: WishOverviewTree[] = plots.map(plot => {
+        const { slot, count, ownWater = 0, friendWater = 0, ornamentsGiven = 0, owner, wish } = plot;
+        return { slot, count, ownWater, friendWater, ornamentsGiven, wish, ownerName: names.get(owner) || "이름 확인 불가", score: wishScore(plot) };
+      });
       return NextResponse.json({ trees }, { headers });
     }
     const data = await db.runTransaction(async tx => {

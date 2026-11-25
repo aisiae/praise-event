@@ -161,6 +161,24 @@ function pick(slot) {
     }
 }
 
+function renderOverviewMetrics(list, tree) {
+    const metrics = [
+        ['물주기', (tree.ownWater ?? 0) + '회'],
+        ['받은 장식', (tree.friendWater ?? 0) + '개'],
+        ['준 장식', (tree.ornamentsGiven ?? 0) + '개'],
+        ['총점', tree.score + '점'],
+    ];
+    list.replaceChildren(...metrics.map(([label, value]) => {
+        const item = document.createElement('div');
+        const name = document.createElement('dt');
+        const count = document.createElement('dd');
+        name.textContent = label;
+        count.textContent = value;
+        item.append(name, count);
+        return item;
+    }));
+}
+
 function renderDetail() {
     const tree = treeAt(selected);
     if (!tree) {
@@ -180,7 +198,10 @@ function renderDetail() {
     const button = byId('detail-action');
     if (overviewRequested) {
         byId('detail-owner').textContent = tree.ownerName + ' 님의 소원 나무';
-        byId('detail-stats').textContent = (tree.slot + 1) + '번 자리 · ' + byId('detail-stats').textContent;
+        byId('detail-stats').textContent = (tree.slot + 1) + '번 자리 · 성장 ' + growthOf(tree) + '/' + maximum + '단';
+        const metrics = byId('detail-overview-metrics');
+        renderOverviewMetrics(metrics, tree);
+        metrics.hidden = false;
         byId('detail-wish').textContent = tree.wish;
         byId('detail-wish').hidden = false;
         button.hidden = true;
@@ -297,7 +318,10 @@ function showOverview(trees) {
         });
         const wish = document.createElement('p');
         wish.textContent = tree.wish;
-        item.append(button, wish);
+        const metrics = document.createElement('dl');
+        metrics.className = 'overview-metrics';
+        renderOverviewMetrics(metrics, tree);
+        item.append(button, metrics, wish);
         return item;
     });
     byId('overview-trees').replaceChildren(...items);
