@@ -3,6 +3,8 @@ import { createVillage } from './scene.mjs';
 const maximum = 23;
 const ornamentLimit = 3;
 const demoOrnamentLimit = 40;
+const adminTestRequested = new URLSearchParams(window.location.search).has('admin-test');
+let adminTestAllowed = false;
 const api = '/api/wish-tree-test';
 const byId = id => document.getElementById(id);
 const entry = byId('entry');
@@ -18,6 +20,7 @@ const sampleTrees = [17, 10, 22, 6, 2].map((ownWater, slot) => ({ slot, ownWater
 const empty = () => ({ trees: [], mine: null, targets: [], watered: [] });
 const growthOf = tree => Math.min(maximum, tree?.ownWater ?? 0);
 const treeAt = slot => garden.trees.find(tree => tree.slot === slot);
+const testTreeSlot = 10;
 
 let mode = 'demo';
 let garden = { ...empty(), trees: sampleTrees };
@@ -55,8 +58,8 @@ function actionFor(slot) {
         if (mode === 'live' && garden.watered.includes(slot)) return { label: '오늘 물주기 완료 ✓' };
         return { action: 'water', label: '💧 소원 나무에 물주기', color: 'sky' };
     }
-    if (mode === 'demo') {
-        if ((tree.friendWater ?? 0) >= demoOrnamentLimit) return { label: '체험 장식 40개를 채웠어요 ✓' };
+    if (mode !== 'live') {
+        if (mode === 'demo' && (tree.friendWater ?? 0) >= demoOrnamentLimit) return { label: '체험 장식 40개를 채웠어요 ✓' };
     } else {
         if (!garden.mine) return { label: '먼저 내 소원 나무를 심어 주세요' };
         if (garden.watered.includes(slot)) return { label: '오늘 장식 달기 완료 ✓' };
@@ -66,8 +69,9 @@ function actionFor(slot) {
 }
 
 function decorationSlots() {
-    if (mode === 'demo') {
-        return garden.trees.filter(tree => tree.slot !== garden.mine?.slot && (tree.friendWater ?? 0) < demoOrnamentLimit).map(tree => tree.slot);
+    if (mode !== 'live') {
+        return garden.trees.filter(tree => tree.slot !== garden.mine?.slot &&
+            (mode === 'admin-test' || (tree.friendWater ?? 0) < demoOrnamentLimit)).map(tree => tree.slot);
     }
     return garden.targets.filter(slot => !garden.watered.includes(slot));
 }
@@ -97,19 +101,19 @@ function syncView() {
     const own = treeAt(garden.mine?.slot);
     const shownGrowth = preview ? maximum : growthOf(own);
     const targets = decorationSlots();
-    byId('player-label').textContent = mode === 'demo' ? '조작 체험' : garden.name + ' 님';
+    byId('player-label').textContent = mode === 'admin-test' ? '관리자 테스트' : mode === 'demo' ? '조작 체험' : garden.name + ' 님';
     byId('planted-count').textContent = garden.trees.length + ' / ' + village.capacity + '그루';
     byId('my-tree-status').textContent = own ? (growthOf(own) === maximum ? '성장 완료' : growthOf(own) + '단 성장') : '심기 가능';
-    byId('ornament-count').textContent = mode === 'demo' ? '반복 체험' : targets.length + ' / ' + ornamentLimit + '회';
+    byId('ornament-count').textContent = mode === 'live' ? targets.length + ' / ' + ornamentLimit + '회' : '반복 체험';
     byId('growth').hidden = !own && !preview;
     const points = (own?.ownWater ?? 0) * 3 + (own?.ornamentsGiven ?? 0) + (own?.friendWater ?? 0);
     byId('growth-label').textContent = shownGrowth + ' / ' + maximum + '단' + (own && !preview ? ' · ' + points + '점' : '');
     growthCells.setAttribute('aria-valuenow', String(shownGrowth));
     Array.from(growthCells.children).forEach((cell, index) => cell.classList.toggle('filled', index < shownGrowth));
     byId('leave').hidden = false;
-    byId('leave').textContent = mode === 'demo' ? '직원 로그인' : '로그아웃';
+    byId('leave').textContent = mode === 'admin-test' ? '테스트 다시 시작' : mode === 'demo' ? '직원 로그인' : '로그아웃';
     byId('find-target').hidden = !targets.length || preview;
-    byId('find-target').textContent = mode === 'demo' ? '🎁 장식 체험하기' : '🎁 오늘 장식할 나무 찾기';
+    byId('find-target').textContent = mode === 'live' ? '🎁 오늘 장식할 나무 찾기' : '🎁 장식 체험하기';
     maxPreview.hidden = false;
     maxPreview.textContent = preview ? '최대 성장 미리보기 닫기' : '23일 최대 성장 미리보기';
     maxPreview.setAttribute('aria-pressed', String(preview));
@@ -258,6 +262,29 @@ function tryAction(slot) {
 }
 
 let village;
+function startAdminTest() {
+    mode = 'admin-test';
+    garden = {
+        ...empty(),
+        trees: [...sampleTrees, { slot: testTreeSlot, ownWater: 0 }],
+        mine: { slot: testTreeSlot, wish: '2027년 소원 테스트' },
+    };
+    preview = false;
+    if (entry.open) entry.close();
+    setSceneEnabled();
+    syncView();
+    village.focus(testTreeSlot);
+}
+
+if (adminTestRequested) {
+    window.addEventListener('message', event => {
+        if (window.parent === window || event.source !== window.parent || event.origin !== window.location.origin ||
+            event.data?.type !== 'wish-garden-admin-test' || adminTestAllowed) return;
+        adminTestAllowed = true;
+        if (village) startAdminTest();
+    });
+}
+
 try {
     await import('./three-r128.min.js');
     village = createVillage(byId('canvas-container'), { onPick: pick, onNear: showNearby });
@@ -274,8 +301,9 @@ try {
 if (village) {
     entry.close();
     showDialog(entry);
-    byId('login-submit').disabled = byId('demo').disabled = false;
-    syncView();
+    byId('login-submit').disabled = byId('demo').disabled = adminTestRequested;
+    if (adminTestAllowed) startAdminTest();
+    else syncView();
     entry.addEventListener('cancel', event => event.preventDefault());
 
     setInterval(async () => {
@@ -298,7 +326,9 @@ if (village) {
     }, 8000);
 
     byId('leave').addEventListener('click', () => {
-        if (mode === 'demo') {
+        if (mode === 'admin-test') {
+            startAdminTest();
+        } else if (mode === 'demo') {
             byId('loading-error').hidden = true;
             showDialog(entry);
         } else {
@@ -313,6 +343,7 @@ if (village) {
     });
     byId('login-form').addEventListener('submit', event => {
         event.preventDefault();
+        if (adminTestRequested) return;
         const fields = Object.fromEntries(new FormData(event.currentTarget));
         void run(async () => {
             byId('loading-error').hidden = true;
@@ -324,7 +355,7 @@ if (village) {
             entry.close();
         });
     });
-    byId('demo').addEventListener('click', () => entry.close());
+    byId('demo').addEventListener('click', () => { if (!adminTestRequested) entry.close(); });
     byId('plant-form').addEventListener('submit', event => {
         event.preventDefault();
         const wish = byId('wish-input').value.trim();

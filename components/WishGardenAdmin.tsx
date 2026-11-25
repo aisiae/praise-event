@@ -138,12 +138,12 @@ export default function WishGardenAdmin() {
     {tab === "status" ? <ParticipationStatus /> : tab === "prizes" || tab === "results" ? <WishPrizes key={tab} tab={tab} /> : <section className="panel admin-section">
       <h3>이벤트 설정</h3>
       <button type="button" className="button secondary" aria-expanded={mobile} onClick={() => setMobile(value => !value)}>
-        {mobile ? "모바일 화면 닫기" : "모바일 화면 보기"}
+        {mobile ? "모바일 테스트 닫기" : "모바일 관리자 테스트"}
       </button>
-      {mobile && <iframe title="2027 소원 나무 정원 모바일 미리보기" src={path} style={{ display: "block", margin: "12px auto", width: "min(390px, 100%)", height: "min(780px, 80dvh)", border: "1px solid #e3d4f0", borderRadius: 18 }} />}
+      {mobile && <iframe title="2027 소원 나무 정원 모바일 관리자 테스트" src={path + "?admin-test"} style={{ display: "block", margin: "12px auto", width: "min(390px, 100%)", height: "min(780px, 80dvh)", border: "1px solid #e3d4f0", borderRadius: 18 }} />}
       <div className="bingo-share-box">
         <h3>공유 테스트 링크</h3>
-        <p>직원 이름과 사번으로 로그인하면 같은 테스트 마당에 입장합니다. 로그인 없이 조작 체험을 선택하면 성장 단계를 연속으로 확인할 수 있습니다.</p>
+        <p>직원 이름과 사번으로 로그인하면 같은 정원에 입장합니다. 관리자 테스트에서는 테스트 나무에 물을 23회 연속으로 주거나 장식을 반복해서 달 수 있습니다.</p>
         <input readOnly aria-label="공유 테스트 링크" value={url} onFocus={event => event.target.select()} />
         <div className="actions">
           <button type="button" className="button primary" onClick={async () => {
@@ -154,7 +154,8 @@ export default function WishGardenAdmin() {
               setNotice("위 주소를 선택해서 복사해 주세요.");
             }
           }}>공유 테스트 링크 복사</button>
-          <a className="button secondary" href={path} target="_blank" rel="noreferrer">테스트 화면 열기 ↗</a>
+          <a className="button secondary" href={path} target="_blank" rel="noreferrer">직원 참여 화면 열기 ↗</a>
+          <a className="button secondary" href={path + "?admin-test"} target="_blank" rel="noreferrer">관리자 테스트 열기 ↗</a>
           <button type="button" className="button secondary" disabled={resetting} onClick={resetTest}>{resetting ? "초기화 중…" : "테스트 초기화"}</button>
         </div>
         {notice && <p role="status">{notice}</p>}

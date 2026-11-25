@@ -700,12 +700,14 @@ export function createVillage(container, { onPick, onNear }) {
             widest = Math.max(widest, radius);
 
             // Start low and spread added decorations around the visible branches.
+            const firstVisibleOrnament = Math.max(0, ornamentCount - 40);
             for (let index = tier; index < Math.min(ornamentCount, 40); index += layers) {
                 const branchIndex = Math.floor(index / layers);
                 const segment = branchIndex * 5 % segments;
                 const row = Math.floor(branchIndex / segments);
                 const angle = rotation + segment * Math.PI / 6 + row * .11;
-                const ornament = createOrnament(index % 5, palette[index % palette.length]);
+                const ordinal = firstVisibleOrnament + index;
+                const ornament = createOrnament(ordinal % 5, palette[ordinal % palette.length]);
                 const distance = radius * ((segment % 2 ? .85 : .97) - row * .12);
                 ornament.position.set(Math.sin(angle) * distance, base + height * (.20 + row * .14), Math.cos(angle) * distance);
                 ornament.rotation.y = angle;
