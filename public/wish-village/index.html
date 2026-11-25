@@ -7,8 +7,10 @@
     <link rel="stylesheet" href="./village.css">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&amp;display=swap">
     <script type="module" src="./garden.mjs"></script>
+    <script type="module" src="./music.mjs"></script>
 </head>
 <body>
+    <audio id="background-music" preload="none" hidden></audio>
     <div id="canvas-container" aria-label="북유럽 산타 빌리지 3D 정원"></div>
 
     <header class="hud">
@@ -33,9 +35,10 @@
         <p class="glass-panel help"><span aria-hidden="true">💡</span><span class="desktop-help">방향키 / WASD 이동 · 마우스 드래그 회전 · 나무/빈터 클릭 · R</span><span class="mobile-help">조이스틱 이동 · 화면 밀어서 회전 · 나무/빈터 터치</span></p>
     </header>
 
-    <div class="zoom" role="group" aria-label="화면 확대와 축소">
+    <div class="zoom" role="group" aria-label="화면 및 배경 음악 조작">
         <button class="btn-control" id="zoom-in" aria-label="확대">+</button>
         <button class="btn-control" id="zoom-out" aria-label="축소">−</button>
+        <button class="glass-panel shortcut garden-music" type="button" data-music-toggle>음악 켜기</button>
     </div>
 
     <div class="movement" role="group" aria-label="캐릭터 이동">
@@ -66,6 +69,7 @@
             <button class="action emerald" id="login-submit" disabled>직원으로 입장</button>
             <a class="action quiet admin-login-link" href="/?admin=1" target="_top">관리자 로그인</a>
         </form>
+        <button class="glass-panel shortcut entry-music" type="button" data-music-toggle>음악 켜기</button>
         <p id="loading-error" class="error" role="alert" hidden></p>
     </dialog>
     <dialog id="celebration" class="glass-panel modal" aria-labelledby="celebration-title">

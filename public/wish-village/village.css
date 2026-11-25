@@ -35,6 +35,8 @@ h1 { color:#6ee7b7; font-size:16px; font-weight:900; letter-spacing:-.035em; }
 .btn-control:active { transform:scale(.94); background:#dc2626; }
 .zoom,.movement,.shortcuts { position:fixed; display:grid; gap:6px; }
 .zoom { right:16px; top:16px; grid-template-columns:1fr 1fr; }
+.zoom .garden-music { grid-column:1 / -1; justify-self:end; min-height:32px; }
+.entry-music { margin-top:8px; }
 .movement { left:20px; bottom:20px; grid-template-columns:repeat(3,44px); }
 .movement button { position:relative; padding:0 3px 7px 0; line-height:1; }
 .movement kbd { position:absolute; right:5px; bottom:4px; color:#ffedd5; font:700 10px/1 system-ui,sans-serif; pointer-events:none; }
