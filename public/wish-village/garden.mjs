@@ -4,6 +4,7 @@ const maximum = 23;
 const ornamentLimit = 3;
 const previewOrnamentCount = 850;
 const adminTestRequested = new URLSearchParams(window.location.search).has('admin-test');
+const overviewRequested = new URLSearchParams(window.location.search).has('overview');
 let adminTestAllowed = false;
 const api = new URLSearchParams(window.location.search).has('live')
     ? '/api/wish-tree-test?mode=live' : '/api/wish-tree-test';
@@ -11,6 +12,7 @@ const byId = id => document.getElementById(id);
 const entry = byId('entry');
 const plantDialog = byId('modal-plant');
 const detailDialog = byId('modal-tree-detail');
+const overviewList = byId('overview-list');
 const editWishForm = byId('edit-wish-form');
 const editedWish = byId('edited-wish');
 const celebration = byId('celebration');
@@ -24,7 +26,7 @@ const treeAt = slot => garden.trees.find(tree => tree.slot === slot);
 const testTreeSlot = 10;
 
 let mode = 'entry';
-let garden = { ...empty(), trees: sampleTrees };
+let garden = overviewRequested ? empty() : { ...empty(), trees: sampleTrees };
 let preview = false;
 let busy = false;
 let nearby = -1;
@@ -52,6 +54,7 @@ function toast(message) {
 }
 
 function actionFor(slot) {
+    if (overviewRequested) return null;
     const tree = treeAt(slot);
     if (!tree) return garden.mine ? null : { action: 'plant', label: '🌱 소원 나무 심기', color: 'emerald' };
     if (slot === garden.mine?.slot) {
@@ -102,7 +105,7 @@ function syncView() {
     const own = treeAt(garden.mine?.slot);
     const shownGrowth = preview ? maximum : growthOf(own);
     const targets = decorationSlots();
-    byId('player-label').textContent = mode === 'admin-test' ? '관리자 테스트' : mode === 'live' ? garden.name + ' 님' : '12월 소원나무 이벤트';
+    byId('player-label').textContent = overviewRequested ? '관리자 전체 현황' : mode === 'admin-test' ? '관리자 테스트' : mode === 'live' ? garden.name + ' 님' : '12월 소원나무 이벤트';
     byId('planted-count').textContent = garden.trees.length + ' / ' + village.capacity + '그루';
     byId('my-tree-status').textContent = own ? (growthOf(own) === maximum ? '성장 완료' : growthOf(own) + '단 성장') : '심기 가능';
     byId('ornament-count').textContent = mode === 'live' ? targets.length + ' / ' + ornamentLimit + '회' : '반복 체험';
@@ -111,12 +114,12 @@ function syncView() {
     byId('growth-label').textContent = shownGrowth + ' / ' + maximum + '단' + (own && !preview ? ' · ' + points + '점' : '');
     growthCells.setAttribute('aria-valuenow', String(shownGrowth));
     Array.from(growthCells.children).forEach((cell, index) => cell.classList.toggle('filled', index < shownGrowth));
-    byId('leave').hidden = false;
+    byId('leave').hidden = overviewRequested;
     byId('leave').textContent = mode === 'admin-test' ? '테스트 다시 시작' : '로그아웃';
-    byId('find-target').hidden = !targets.length || preview;
+    byId('find-target').hidden = overviewRequested || !targets.length || preview;
     byId('open-admin-test').hidden = !adminTestAllowed || mode === 'admin-test';
     byId('find-target').textContent = mode === 'live' ? '🎁 오늘 장식할 나무 찾기' : '🎁 장식 체험하기';
-    maxPreview.hidden = false;
+    maxPreview.hidden = overviewRequested;
     maxPreview.textContent = preview ? '최대 성장 미리보기 닫기' : '23일 성장·장식 미리보기';
     maxPreview.setAttribute('aria-pressed', String(preview));
 
@@ -130,7 +133,7 @@ function syncView() {
 }
 
 function setSceneEnabled() {
-    canPlay = ![entry, plantDialog, detailDialog, celebration].some(dialog => dialog.open);
+    canPlay = ![entry, plantDialog, detailDialog, celebration, overviewList].some(dialog => dialog.open);
     village.setEnabled(canPlay);
     showNearby(nearby);
 }
@@ -148,6 +151,8 @@ function pick(slot) {
     if (treeAt(slot)) {
         renderDetail();
         showDialog(detailDialog);
+    } else if (overviewRequested) {
+        return;
     } else if (!garden.mine) {
         byId('wish-input').value = '';
         showDialog(plantDialog);
@@ -173,6 +178,14 @@ function renderDetail() {
     byId('edit-wish').hidden = !mine || editing;
     byId('edit-wish').disabled = busy;
     const button = byId('detail-action');
+    if (overviewRequested) {
+        byId('detail-owner').textContent = tree.ownerName + ' 님의 소원 나무';
+        byId('detail-stats').textContent = (tree.slot + 1) + '번 자리 · ' + byId('detail-stats').textContent;
+        byId('detail-wish').textContent = tree.wish;
+        byId('detail-wish').hidden = false;
+        button.hidden = true;
+        return;
+    }
     button.hidden = editing;
     renderActionLabel(button, action);
     button.className = 'action ' + (action.color ?? 'quiet');
@@ -267,6 +280,43 @@ function tryAction(slot) {
 }
 
 let village;
+function showOverview(trees) {
+    if (!village || mode === 'overview') return;
+    mode = 'overview';
+    garden = { ...empty(), trees };
+    const items = [...trees].sort((first, second) => first.slot - second.slot).map(tree => {
+        const item = document.createElement('li');
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'action quiet';
+        button.textContent = (tree.slot + 1) + '번 · ' + tree.ownerName;
+        button.addEventListener('click', () => {
+            overviewList.close();
+            village.focus(tree.slot);
+            pick(tree.slot);
+        });
+        const wish = document.createElement('p');
+        wish.textContent = tree.wish;
+        item.append(button, wish);
+        return item;
+    });
+    byId('overview-trees').replaceChildren(...items);
+    byId('overview-empty').hidden = items.length > 0;
+    byId('open-overview-list').hidden = false;
+    entry.close();
+    setSceneEnabled();
+    syncView();
+}
+
+if (overviewRequested) {
+    byId('login-form').hidden = true;
+    entry.querySelector('h2').textContent = '관리자 전체 현황';
+    entry.querySelector('.modal-heading p').textContent = '이벤트 관리의 전체 현황에서 정원을 열어 주세요.';
+    byId('player-stats').hidden = true;
+    byId('btn-find-mine').hidden = true;
+    document.body.classList.add('overview-mode');
+}
+
 function startAdminTest() {
     if (!adminTestAllowed || busy) return;
     if (detailDialog.open) detailDialog.close();
@@ -284,8 +334,12 @@ function startAdminTest() {
 }
 
 window.addEventListener('message', event => {
-    if (window.parent === window || event.source !== window.parent || event.origin !== window.location.origin ||
-        event.data?.type !== 'wish-garden-admin-test' || typeof event.data.allowed !== 'boolean' ||
+    if (window.parent === window || event.source !== window.parent || event.origin !== window.location.origin) return;
+    if (overviewRequested) {
+        if (event.data?.type === 'wish-garden-overview' && Array.isArray(event.data.trees)) showOverview(event.data.trees);
+        return;
+    }
+    if (event.data?.type !== 'wish-garden-admin-test' || typeof event.data.allowed !== 'boolean' ||
         adminTestAllowed === event.data.allowed) return;
     adminTestAllowed = event.data.allowed;
     if (!village) return;
@@ -315,6 +369,9 @@ if (village) {
     else syncView();
     entry.addEventListener('cancel', event => event.preventDefault());
 
+    if (overviewRequested && window.parent !== window) {
+        window.parent.postMessage({ type: 'wish-garden-overview-ready' }, window.location.origin);
+    }
     setInterval(async () => {
         if (mode !== 'live' || document.hidden || busy) return;
         const atStart = garden;
@@ -376,7 +433,8 @@ if (village) {
         });
     });
 
-    [entry, plantDialog, detailDialog, celebration].forEach(dialog => dialog.addEventListener('close', setSceneEnabled));
+    [entry, plantDialog, detailDialog, celebration, overviewList].forEach(dialog => dialog.addEventListener('close', setSceneEnabled));
+    byId('open-overview-list').addEventListener('click', () => showDialog(overviewList));
     detailDialog.addEventListener('close', () => { editWishForm.hidden = true; });
     document.querySelectorAll('[data-close]').forEach(button => {
         button.addEventListener('click', () => button.closest('dialog').close());

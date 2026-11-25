@@ -23,7 +23,7 @@
                 </div>
                 <button id="leave" class="quiet compact" type="button" hidden>나가기</button>
             </div>
-            <div class="stats">
+            <div class="stats" id="player-stats">
                 <div><span>내 나무</span><strong id="my-tree-status">심기 가능</strong></div>
                 <div><span>오늘 장식</span><strong id="ornament-count">0 / 3회</strong></div>
             </div>
@@ -50,6 +50,7 @@
     <div id="joystick" class="glass-panel joystick" aria-label="캐릭터 이동 조이스틱"><span aria-hidden="true">✥</span></div>
 
     <div class="shortcuts">
+        <button id="open-overview-list" class="glass-panel shortcut" type="button" hidden>전체 소원 목록</button>
         <button id="near-action" class="action emerald" hidden></button>
         <button id="open-admin-test" class="glass-panel shortcut" type="button" hidden>관리자 반복 테스트</button>
         <button id="find-target" class="glass-panel shortcut" hidden>🎁 오늘 장식할 나무 찾기</button>
@@ -99,7 +100,16 @@
         </form>
     </dialog>
 
-    <dialog id="modal-tree-detail" class="glass-panel modal">
+    <dialog id="overview-list" class="glass-panel modal" aria-labelledby="overview-list-title">
+        <div class="modal-heading">
+            <h2 id="overview-list-title">전체 소원 목록</h2>
+            <button class="close" data-close aria-label="닫기" type="button">✕</button>
+        </div>
+        <ul id="overview-trees"></ul>
+        <p id="overview-empty" hidden>아직 심은 소원 나무가 없어요.</p>
+    </dialog>
+
+    <dialog id="modal-tree-detail" class="glass-panel modal" aria-labelledby="detail-owner">
         <div class="modal-heading">
             <span class="tile amber-tile" aria-hidden="true">🎄</span>
             <div>

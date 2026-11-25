@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { getFirebaseAuth } from "@/lib/firebase-client";
 import WishPublication from "./WishPublication";
 import WishPrizes from "./WishPrizes";
+import WishGardenOverview from "./WishGardenOverview";
 import { maxOwnWater, wishScore, type WishGardenStatus } from "@/lib/wish-garden";
 
 const path = "/wish-tree-test";
@@ -14,6 +15,7 @@ function ParticipationStatus({ mode }: { mode: "test" | "live" }) {
   const [refresh, setRefresh] = useState(0);
   const [filter, setFilter] = useState("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [overviewOpen, setOverviewOpen] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -56,8 +58,12 @@ function ParticipationStatus({ mode }: { mode: "test" | "live" }) {
   return <section className="panel admin-section">
     <div className="section-head">
       <div><h3>이벤트 현황</h3><p>{data?.today && `${data.today} 한국시간 · `}10초마다 갱신</p></div>
-      <button type="button" className="button secondary" onClick={() => setRefresh(value => value + 1)}>새로고침</button>
+      <div className="actions">
+        <button type="button" className="button primary" onClick={() => setOverviewOpen(true)}>전체 현황</button>
+        <button type="button" className="button secondary" onClick={() => setRefresh(value => value + 1)}>새로고침</button>
+      </div>
     </div>
+    {overviewOpen && <WishGardenOverview mode={mode} onClose={() => setOverviewOpen(false)} />}
     {notice && <p role="alert">{notice}{data && " 마지막으로 불러온 현황을 표시하고 있어요."}</p>}
     {!data && !notice && <p role="status">참여 현황을 불러오는 중이에요.</p>}
     {data && <>

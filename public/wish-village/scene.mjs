@@ -1038,7 +1038,11 @@ export function createVillage(container, { onPick, onNear }) {
             const growth = Math.min(23, tree.ownWater ?? 0);
             const ornaments = tree.friendWater ?? 0;
             const isMine = tree.slot === mine?.slot;
-            const wish = isMine ? mine.wish : '';
+            let wish = isMine ? mine.wish : '';
+            if (tree.ownerName) {
+                const summary = [...tree.wish.trim().replace(/\s+/g, ' ')];
+                wish = tree.ownerName + ' · ' + summary.slice(0, 37).join('') + (summary.length > 37 ? '…' : '');
+            }
             const old = plantedTrees.get(tree.slot);
             if (old?.growth === growth && old.ornaments === ornaments && old.isMine === isMine && old.wish === wish) continue;
             if (old) {

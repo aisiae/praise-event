@@ -94,6 +94,12 @@ h1 { color:#6ee7b7; font-size:16px; font-weight:900; letter-spacing:-.035em; }
 #detail-action { width:100%; }
 #edit-wish { width:100%; margin-bottom:8px; }
 .error { margin-top:10px; color:#fecaca; }
+.overview-mode .help { display:none; }
+#overview-list { width:min(600px,calc(100% - 32px)); }
+#overview-trees { display:grid; gap:10px; list-style:none; padding:0; margin:0; }
+#overview-trees li { display:grid; gap:8px; padding:10px; border:1px solid #ffffff26; border-radius:12px; }
+#overview-trees button { justify-self:start; overflow-wrap:anywhere; }
+#overview-trees p { white-space:pre-wrap; overflow-wrap:anywhere; }
 @media (max-width:680px),(pointer:coarse) {
     :root {
         --controls-bottom:max(12px, env(safe-area-inset-bottom, 0px));

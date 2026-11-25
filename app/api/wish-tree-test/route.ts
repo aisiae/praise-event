@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { normalizeEmployeeId, normalizeEmployeeName, todaySeoul } from "@/lib/utils";
-import { fillTargets, growthFor, maxOwnWater, slots, type Garden, type Tree, type WishGardenStatus } from "@/lib/wish-garden";
+import { fillTargets, growthFor, maxOwnWater, slots, type Garden, type Tree, type WishGardenStatus, type WishOverviewTree } from "@/lib/wish-garden";
 
 import { wishGardenRoot, wishMode, type WishMode } from "@/lib/wish-garden-server";
 import { wishPublication } from "@/lib/wish-publication";
@@ -91,6 +91,16 @@ async function adminStatus(request: NextRequest, mode: WishMode) {
     const db = getAdminDb();
     const today = todaySeoul();
     const root = wishGardenRoot(mode);
+    if (request.nextUrl.searchParams.get("view") === "admin-overview") {
+      const plots = ((await root.get()).data()?.plots ?? []) as Plot[];
+      const ownerIds = [...new Set(plots.map(plot => plot.owner))];
+      const people = ownerIds.length ? await db.getAll(...ownerIds.map(id => db.collection("employees").doc(id))) : [];
+      const names = new Map(people.map(person => [person.id, String(person.data()?.name ?? "")]));
+      const trees: WishOverviewTree[] = plots.map(({ slot, count, ownWater, friendWater, owner, wish }) => ({
+        slot, count, ownWater, friendWater, wish, ownerName: names.get(owner) || "이름 확인 불가",
+      }));
+      return NextResponse.json({ trees }, { headers });
+    }
     const data = await db.runTransaction(async tx => {
       const [board, employees, visits] = await Promise.all([
         tx.get(root),
@@ -125,7 +135,8 @@ async function adminStatus(request: NextRequest, mode: WishMode) {
 
 export async function GET(request: NextRequest) {
   const mode = wishMode(request.nextUrl.searchParams);
-  if (request.nextUrl.searchParams.get("view") === "admin-status") return adminStatus(request, mode);
+  const view = request.nextUrl.searchParams.get("view");
+  if (view === "admin-status" || view === "admin-overview") return adminStatus(request, mode);
   try {
     if (mode === "live" && wishPublication((await wishGardenRoot(mode).get()).data()?.schedule).state !== "open") {
       return NextResponse.json({ error: "현재 소원 나무 정원 운영 기간이 아니에요." }, { status: 403 });
