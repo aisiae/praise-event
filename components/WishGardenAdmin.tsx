@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { getFirebaseAuth } from "@/lib/firebase-client";
+import WishPublication from "./WishPublication";
 import WishPrizes from "./WishPrizes";
 import { maxOwnWater, wishScore, type WishGardenStatus } from "@/lib/wish-garden";
 
 const path = "/wish-tree-test";
 
-function ParticipationStatus() {
+function ParticipationStatus({ mode }: { mode: "test" | "live" }) {
   const [data, setData] = useState<WishGardenStatus | null>(null);
   const [notice, setNotice] = useState("");
   const [refresh, setRefresh] = useState(0);
@@ -24,7 +25,7 @@ function ParticipationStatus() {
         const user = getFirebaseAuth().currentUser;
         if (!user) throw new Error("관리자로 로그인한 뒤 확인해 주세요.");
         const token = await user.getIdToken();
-        const response = await fetch("/api/wish-tree-test?view=admin-status", {
+        const response = await fetch("/api/wish-tree-test?view=admin-status&mode=" + mode, {
           headers: { Authorization: `Bearer ${token}` },
           signal: controller.signal,
           cache: "no-store",
@@ -44,7 +45,7 @@ function ParticipationStatus() {
     void load();
     const timer = window.setInterval(() => { if (!document.hidden) void load(); }, 10000);
     return () => { controller.abort(); window.clearInterval(timer); };
-  }, [refresh]);
+  }, [refresh, mode]);
 
   const planted = data?.rows.filter(row => row.tree).length ?? 0;
   const wateredToday = data?.rows.filter(row => row.wateredOwnToday || row.wateredOthersToday).length ?? 0;
@@ -100,7 +101,7 @@ function ParticipationStatus() {
   </section>;
 }
 
-export default function WishGardenAdmin() {
+export default function WishGardenAdmin({ mode }: { mode: "test" | "live" }) {
   const [tab, setTab] = useState<"settings" | "status" | "prizes" | "results">("settings");
   const [mobile, setMobile] = useState(false);
   const [notice, setNotice] = useState("");
@@ -135,8 +136,9 @@ export default function WishGardenAdmin() {
         <button key={id} type="button" className={tab === id ? "active" : ""} aria-current={tab === id ? "page" : undefined} onClick={() => setTab(id)}>{label}</button>
       ))}
     </nav>
-    {tab === "status" ? <ParticipationStatus /> : tab === "prizes" || tab === "results" ? <WishPrizes key={tab} tab={tab} /> : <section className="panel admin-section">
+    {tab === "status" ? <ParticipationStatus mode={mode} /> : tab === "prizes" || tab === "results" ? <WishPrizes key={tab} tab={tab} mode={mode} /> : <section className="panel admin-section">
       <h3>이벤트 설정</h3>
+      {mode === "live" ? <WishPublication /> : <>
       <button type="button" className="button secondary" aria-expanded={mobile} onClick={() => setMobile(value => !value)}>
         {mobile ? "모바일 테스트 닫기" : "모바일 관리자 테스트"}
       </button>
@@ -160,6 +162,7 @@ export default function WishGardenAdmin() {
         </div>
         {notice && <p role="status">{notice}</p>}
       </div>
+      </>}
     </section>}
   </section>;
 }

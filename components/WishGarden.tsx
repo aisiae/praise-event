@@ -4,11 +4,12 @@ import { onAuthStateChanged } from "firebase/auth";
 import { useEffect, useRef, useState } from "react";
 import { getFirebaseAuth } from "@/lib/firebase-client";
 
-export default function WishGarden({ adminTest }: { adminTest: boolean }) {
+export default function WishGarden({ adminTest = false, live = false }: { adminTest?: boolean; live?: boolean }) {
   const frame = useRef<HTMLIFrameElement>(null);
   const [access, setAccess] = useState<"loading" | "admin" | "denied">("loading");
 
   useEffect(() => {
+    if (live) return;
     const request = new AbortController();
     const auth = getFirebaseAuth();
     const unsubscribe = onAuthStateChanged(auth, async user => {
@@ -28,7 +29,7 @@ export default function WishGarden({ adminTest }: { adminTest: boolean }) {
       }
     });
     return () => { request.abort(); unsubscribe(); };
-  }, []);
+  }, [live]);
 
   useEffect(() => {
     frame.current?.contentWindow?.postMessage({ type: "wish-garden-admin-test", allowed: access === "admin" }, window.location.origin);
@@ -41,7 +42,9 @@ export default function WishGarden({ adminTest }: { adminTest: boolean }) {
 
     function fitViewport() {
       if (!viewport || !element) return;
+      element.style.width = `${Math.floor(viewport.width)}px`;
       element.style.height = `${Math.floor(viewport.height)}px`;
+      element.style.left = `${Math.round(viewport.offsetLeft)}px`;
       element.style.top = `${Math.round(viewport.offsetTop)}px`;
     }
 
@@ -60,7 +63,7 @@ export default function WishGarden({ adminTest }: { adminTest: boolean }) {
   return <iframe
     ref={frame}
     title="2027 소원 나무 정원"
-    src={adminTest ? "/wish-village/index.html?admin-test" : "/wish-village/index.html"}
+    src={live ? "/wish-village/index.html?live" : adminTest ? "/wish-village/index.html?admin-test" : "/wish-village/index.html"}
     onLoad={() => {
       frame.current?.contentWindow?.postMessage({ type: "wish-garden-admin-test", allowed: access === "admin" }, window.location.origin);
     }}

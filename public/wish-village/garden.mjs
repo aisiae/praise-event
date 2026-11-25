@@ -5,7 +5,8 @@ const ornamentLimit = 3;
 const previewOrnamentCount = 850;
 const adminTestRequested = new URLSearchParams(window.location.search).has('admin-test');
 let adminTestAllowed = false;
-const api = '/api/wish-tree-test';
+const api = new URLSearchParams(window.location.search).has('live')
+    ? '/api/wish-tree-test?mode=live' : '/api/wish-tree-test';
 const byId = id => document.getElementById(id);
 const entry = byId('entry');
 const plantDialog = byId('modal-plant');

@@ -5,28 +5,33 @@ import { getAdminDb } from "@/lib/firebase-admin";
 import { normalizeEmployeeId, normalizeEmployeeName, todaySeoul } from "@/lib/utils";
 import { fillTargets, growthFor, maxOwnWater, slots, type Garden, type Tree, type WishGardenStatus } from "@/lib/wish-garden";
 
-const cookie = "wish-tree-test-session";
+import { wishGardenRoot, wishMode, type WishMode } from "@/lib/wish-garden-server";
+import { wishPublication } from "@/lib/wish-publication";
+
+const sessionCookie = (mode: WishMode) => mode === "live" ? "wish-tree-session" : "wish-tree-test-session";
 const hash = (token: string) => createHash("sha256").update(token).digest("hex");
-const event = () => getAdminDb().collection("wishGardens").doc("christmas-2026-test");
-const sessions = () => event().collection("sessions");
+const sessions = (mode: WishMode) => wishGardenRoot(mode).collection("sessions");
 
 type Plot = Tree & { owner: string; wish: string };
 type Visit = { date: string; resetVersion?: string; targets: number[]; watered: number[] };
 
-async function employeeId(request: NextRequest) {
-  const token = request.cookies.get(cookie)?.value;
+async function employeeId(request: NextRequest, mode: WishMode) {
+  const token = request.cookies.get(sessionCookie(mode))?.value;
   if (!token) return null;
-  const session = (await sessions().doc(hash(token)).get()).data();
+  const session = (await sessions(mode).doc(hash(token)).get()).data();
   if (!session || session.expiresAt <= Date.now()) return null;
   const person = await getAdminDb().collection("employees").doc(session.employeeId).get();
   return person.data()?.status === "재직" ? { id: person.id, name: String(person.data()?.name ?? "") } : null;
 }
 
-async function garden({ id, name }: { id: string; name: string }, action?: "plant" | "water" | "decorate" | "edit-wish", slot?: number, wish?: string): Promise<Garden> {
-  const root = event();
+async function garden(mode: WishMode, { id, name }: { id: string; name: string }, action?: "plant" | "water" | "decorate" | "edit-wish", slot?: number, wish?: string): Promise<Garden> {
+  const root = wishGardenRoot(mode);
   const visitRef = root.collection("visits").doc(id);
   return getAdminDb().runTransaction(async tx => {
     const [board, visitDoc] = await Promise.all([tx.get(root), tx.get(visitRef)]);
+    if (mode === "live" && wishPublication(board.data()?.schedule).state !== "open") {
+      throw new Error("현재 소원 나무 정원 운영 기간이 아니에요.");
+    }
     const plots = (board.data()?.plots ?? []) as Plot[];
     let own = plots.find(plot => plot.owner === id);
     const date = todaySeoul();
@@ -75,7 +80,7 @@ async function garden({ id, name }: { id: string; name: string }, action?: "plan
   });
 }
 
-async function adminStatus(request: NextRequest) {
+async function adminStatus(request: NextRequest, mode: WishMode) {
   const headers = { "Cache-Control": "private, no-store" };
   try {
     await requireAdmin(request);
@@ -85,7 +90,7 @@ async function adminStatus(request: NextRequest) {
   try {
     const db = getAdminDb();
     const today = todaySeoul();
-    const root = event();
+    const root = wishGardenRoot(mode);
     const data = await db.runTransaction(async tx => {
       const [board, employees, visits] = await Promise.all([
         tx.get(root),
@@ -119,18 +124,23 @@ async function adminStatus(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-  if (request.nextUrl.searchParams.get("view") === "admin-status") return adminStatus(request);
+  const mode = wishMode(request.nextUrl.searchParams);
+  if (request.nextUrl.searchParams.get("view") === "admin-status") return adminStatus(request, mode);
   try {
-    const id = await employeeId(request);
-    return NextResponse.json(id ? await garden(id) : { signedIn: false }, { headers: { "Cache-Control": "no-store" } });
+    if (mode === "live" && wishPublication((await wishGardenRoot(mode).get()).data()?.schedule).state !== "open") {
+      return NextResponse.json({ error: "현재 소원 나무 정원 운영 기간이 아니에요." }, { status: 403 });
+    }
+    const id = await employeeId(request, mode);
+    return NextResponse.json(id ? await garden(mode, id) : { signedIn: false }, { headers: { "Cache-Control": "no-store" } });
   } catch {
     return NextResponse.json({ error: "공동 마당을 불러오지 못했어요." }, { status: 503 });
   }
 }
 
 export async function POST(request: NextRequest) {
+  const mode = wishMode(request.nextUrl.searchParams);
   try {
-    if (request.headers.get("origin") !== request.nextUrl.origin) throw new Error("테스트 페이지에서 다시 시도해 주세요.");
+    if (request.headers.get("origin") !== request.nextUrl.origin) throw new Error("정원 페이지에서 다시 시도해 주세요.");
     const body = await request.json();
     if (body.action === "login") {
       const id = normalizeEmployeeId(body.employeeId);
@@ -139,26 +149,26 @@ export async function POST(request: NextRequest) {
       const person = (await getAdminDb().collection("employees").doc(id).get()).data();
       if (person?.status !== "재직" || normalizeEmployeeName(person.name) !== name) throw new Error("이름과 사번을 확인해 주세요.");
       const token = randomBytes(32).toString("hex");
-      const data = await garden({ id, name: String(person.name) });
-      await sessions().doc(hash(token)).set({ employeeId: id, expiresAt: Date.now() + 86400000 });
+      const data = await garden(mode, { id, name: String(person.name) });
+      await sessions(mode).doc(hash(token)).set({ employeeId: id, expiresAt: Date.now() + 86400000 });
       const response = NextResponse.json(data);
-      response.cookies.set(cookie, token, { httpOnly: true, secure: request.nextUrl.protocol === "https:", sameSite: "lax", path: "/", maxAge: 86400 });
+      response.cookies.set(sessionCookie(mode), token, { httpOnly: true, secure: request.nextUrl.protocol === "https:", sameSite: "lax", path: "/", maxAge: 86400 });
       return response;
     }
     if (body.action === "logout") {
-      const token = request.cookies.get(cookie)?.value;
-      if (token) await sessions().doc(hash(token)).delete();
+      const token = request.cookies.get(sessionCookie(mode))?.value;
+      if (token) await sessions(mode).doc(hash(token)).delete();
       const response = NextResponse.json({ signedIn: false });
-      response.cookies.delete(cookie);
+      response.cookies.delete(sessionCookie(mode));
       return response;
     }
-    const id = await employeeId(request);
+    const id = await employeeId(request, mode);
     if (!id) throw new Error("직원 로그인이 필요합니다.");
     const { action, slot } = body;
     const wish = typeof body.wish === "string" ? body.wish.trim() : "";
     if ((action !== "plant" && action !== "water" && action !== "decorate" && action !== "edit-wish") || !Number.isInteger(slot) || slot < 0 || slot >= slots.length) throw new Error("나무 자리를 확인해 주세요.");
     if ((action === "plant" || action === "edit-wish") && (!wish || wish.length > 150)) throw new Error("소원을 1~150자로 입력해 주세요.");
-    return NextResponse.json(await garden(id, action, slot, wish));
+    return NextResponse.json(await garden(mode, id, action, slot, wish));
   } catch (error) {
     const message = error instanceof Error && /[가-힣]/.test(error.message) ? error.message : "마당을 저장하지 못했어요. 다시 시도해 주세요.";
     return NextResponse.json({ error: message }, { status: 400 });

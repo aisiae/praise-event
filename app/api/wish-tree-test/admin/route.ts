@@ -4,8 +4,8 @@ import { requireAdmin } from "@/lib/auth";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { defaultWishPrizes, wishScore, type Tree, type WishDraw, type WishPrize } from "@/lib/wish-garden";
 
-const root = () => getAdminDb().collection("wishGardens").doc("christmas-2026-test");
-const rules = () => root().collection("admin").doc("prizes");
+import { wishGardenRoot, wishMode } from "@/lib/wish-garden-server";
+import { parseWishSchedule, wishPublication } from "@/lib/wish-publication";
 const headers = { "Cache-Control": "private, no-store" };
 
 async function authorized(request: NextRequest) {
@@ -23,8 +23,14 @@ function bad(error: string, status = 400) {
 
 export async function GET(request: NextRequest) {
   if (!await authorized(request)) return bad("관리자 로그인이 필요해요.", 403);
+  const mode = wishMode(request.nextUrl.searchParams);
+  const root = wishGardenRoot(mode);
+  const rules = root.collection("admin").doc("prizes");
   try {
-    const data = (await rules().get()).data();
+    if (mode === "live" && request.nextUrl.searchParams.get("view") === "schedule") {
+      return NextResponse.json(wishPublication((await root.get()).data()?.schedule), { headers });
+    }
+    const data = (await rules.get()).data();
     return NextResponse.json({ prizes: data?.prizes ?? defaultWishPrizes, result: data?.result ?? null }, { headers });
   } catch {
     return bad("상품과 결과를 불러오지 못했어요.", 503);
@@ -42,25 +48,34 @@ function validPrizes(value: unknown): value is WishPrize[] {
 
 export async function POST(request: NextRequest) {
   if (!await authorized(request)) return bad("관리자 로그인이 필요해요.", 403);
+  const mode = wishMode(request.nextUrl.searchParams);
+  const root = wishGardenRoot(mode);
+  const rules = root.collection("admin").doc("prizes");
   try {
     const body = await request.json();
-    if (body.action === "reset") {
+    if (mode === "live" && (body.action === "schedule" || body.action === "unpublish")) {
+      const schedule = body.action === "schedule" ? parseWishSchedule(body.startsAt, body.endsAt) : null;
+      if (body.action === "schedule" && !schedule) return bad("게시 종료는 시작보다 늦어야 해요. 한국시간 날짜와 시각을 확인해 주세요.");
+      await root.set({ schedule }, { merge: true });
+      return NextResponse.json(wishPublication(schedule), { headers });
+    }
+    if (body.action === "reset" && mode === "test") {
       const batch = getAdminDb().batch();
-      batch.set(root(), { plots: [], resetVersion: randomUUID() }, { merge: true });
-      batch.set(rules(), { result: null }, { merge: true });
+      batch.set(root, { plots: [], resetVersion: randomUUID() }, { merge: true });
+      batch.set(rules, { result: null }, { merge: true });
       await batch.commit();
       return NextResponse.json({ reset: true }, { headers });
     }
     if (body.action === "save") {
       if (!validPrizes(body.prizes)) return bad("상품명은 서로 다르게 입력하고, 지급액과 전체 인원(최대 40명)을 확인해 주세요.");
       const prizes: WishPrize[] = body.prizes.map(({ name, amount, quantity }: WishPrize) => ({ name: name.trim(), amount, quantity }));
-      await rules().set({ prizes }, { merge: true });
+      await rules.set({ prizes }, { merge: true });
       return NextResponse.json({ prizes }, { headers });
     }
     if (body.action !== "draw") return bad("요청을 확인해 주세요.");
     const result = await getAdminDb().runTransaction(async tx => {
       const [settings, board, employees] = await Promise.all([
-        tx.get(rules()), tx.get(root()),
+        tx.get(rules), tx.get(root),
         tx.get(getAdminDb().collection("employees").where("status", "==", "재직")),
       ]);
       const prizes = (settings.data()?.prizes ?? defaultWishPrizes) as WishPrize[];
@@ -85,10 +100,10 @@ export async function POST(request: NextRequest) {
         }
       }
       const result: WishDraw = { drawnAt: Date.now(), eligible: candidates.length, winners };
-      tx.set(rules(), { result }, { merge: true });
+      tx.set(rules, { result }, { merge: true });
       return result;
     });
-    if (!result) return bad("먼저 직원 로그인으로 테스트 나무를 한 그루 이상 심어 주세요.");
+    if (!result) return bad("먼저 직원 로그인으로 나무를 한 그루 이상 심어 주세요.");
     return NextResponse.json({ result }, { headers });
   } catch {
     return bad("요청을 처리하지 못했어요. 잠시 후 다시 시도해 주세요.", 503);

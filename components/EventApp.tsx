@@ -151,7 +151,7 @@ export default function EventApp({ initialData, initialAdminOpen = false }: { in
   const [targetId, setTargetId] = useState("");
   const [content, setContent] = useState("");
   const [adminOpen, setAdminOpen] = useState(initialAdminOpen);
-  const [wishSelected, setWishSelected] = useState(false);
+  const [wishSelected, setWishSelected] = useState<false | "test" | "live">(false);
   const [bingoSelected, setBingoSelected] = useState<false|"test"|"live">(false);
   const [admin, setAdmin] = useState<AdminData | null>(null);
   const [adminLogin, setAdminLogin] = useState({ email: "", password: "" });
@@ -554,7 +554,7 @@ export default function EventApp({ initialData, initialAdminOpen = false }: { in
               </div>
               <div className="admin-workspace">
                 <aside className="event-sidebar panel">
-                  <div className="event-sidebar-head"><strong>이벤트 목록</strong><span>{admin.events.length + 3}</span></div>
+                  <div className="event-sidebar-head"><strong>이벤트 목록</strong><span>{admin.events.length + 4}</span></div>
                   <div className="event-list">
                     {admin.events.map((event, index) => <div className={`event-list-row ${!wishSelected && !bingoSelected && adminTab !== "employees" && admin.selectedEventId === event.id ? "active" : ""}`} key={event.id}>
                       <button className="event-select-button" disabled={busy} onClick={() => loadAdminEvent(event.id)}><span>{event.type === "quiz" ? "Q" : event.type === "instagram" ? "▣" : "♥"}</span><div><strong>{event.eventName}</strong><small>{event.status === "active" ? "진행 중" : event.status === "closed" ? "종료" : "준비 중"}</small></div></button>
@@ -567,16 +567,21 @@ export default function EventApp({ initialData, initialAdminOpen = false }: { in
                   </div>
                   <div className={`event-list-row ${bingoSelected === "test" ? "active" : ""}`}><button className="event-select-button" onClick={() => { setWishSelected(false); setBingoSelected("test"); setAdminTab("settings"); }}><span>▦</span><div><strong>[테스트] 오늘의 선택 빙고</strong><small>관리자 기능 테스트</small></div></button></div>
                   <div className={`event-list-row ${bingoSelected === "live" ? "active" : ""}`}><button className="event-select-button" onClick={() => { setWishSelected(false); setBingoSelected("live"); setAdminTab("settings"); }}><span>▦</span><div><strong>오늘의 선택 빙고</strong><small>운영용 · 일정 및 게시 별도 설정</small></div></button></div>
-                  <div className={`event-list-row ${wishSelected ? "active" : ""}`}>
-                    <button className="event-select-button" onClick={() => { setWishSelected(true); setBingoSelected(false); setAdminTab("settings"); }}>
+                  <div className={`event-list-row ${wishSelected === "test" ? "active" : ""}`}>
+                    <button className="event-select-button" onClick={() => { setWishSelected("test"); setBingoSelected(false); setAdminTab("settings"); }}>
                       <span>🎄</span><div><strong>[테스트] 2027 소원나무 마당</strong><small>공유 링크 · 모바일 미리보기</small></div>
+                    </button>
+                  </div>
+                  <div className={wishSelected === "live" ? "event-list-row active" : "event-list-row"}>
+                    <button className="event-select-button" onClick={() => { setWishSelected("live"); setBingoSelected(false); setAdminTab("settings"); }}>
+                      <span>🎄</span><div><strong>2027 소원 나무 정원</strong><small>운영용 · 예약 게시</small></div>
                     </button>
                   </div>
                   <div className="event-create-actions">
                     <button className="button secondary" disabled={busy} onClick={() => runAdmin({ action: "createEvent", type: "quiz" }, "새 퀴즈 이벤트를 만들었습니다.")}>+ 퀴즈 이벤트</button>
                     <button className="button secondary" disabled={busy} onClick={() => runAdmin({ action: "createEvent", type: "praise" }, "새 칭찬 이벤트를 만들었습니다.")}>+ 칭찬 이벤트</button>
                     <button className="button secondary" disabled={busy} onClick={() => runAdmin({ action: "createEvent", type: "instagram" }, "새 나도 인스타 이벤트를 만들었습니다.")}>+ 사진 이벤트</button>
-                    <button className="button secondary" disabled={busy || wishSelected || !!bingoSelected} onClick={() => runAdmin({ action: "copyEvent" }, "이벤트 설정을 복사했습니다.")}>선택 이벤트 복사</button>
+                    <button className="button secondary" disabled={busy || !!wishSelected || !!bingoSelected} onClick={() => runAdmin({ action: "copyEvent" }, "이벤트 설정을 복사했습니다.")}>선택 이벤트 복사</button>
                   </div>
                   <div className="common-admin-nav">
                     <span>공통 관리</span>
@@ -584,7 +589,7 @@ export default function EventApp({ initialData, initialAdminOpen = false }: { in
                   </div>
                 </aside>
                 <div className="admin-content">
-              {wishSelected ? <WishGardenAdmin /> : bingoSelected ? <BingoTest adminMode mode={bingoSelected || "test"} key={bingoSelected || "none"} onPublicationChange={refresh} /> : <>
+              {wishSelected ? <WishGardenAdmin key={wishSelected} mode={wishSelected} /> : bingoSelected ? <BingoTest adminMode mode={bingoSelected || "test"} key={bingoSelected || "none"} onPublicationChange={refresh} /> : <>
               <nav className="admin-tabs" aria-label="관리자 메뉴">
                 {([
                   ["settings", "이벤트 설정"],

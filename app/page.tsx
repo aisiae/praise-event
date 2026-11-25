@@ -1,3 +1,5 @@
+import { redirect } from "next/navigation";
+import { getWishPublication } from "@/lib/wish-garden-server";
 import EventApp from "@/components/EventApp";
 import type { PublicData } from "@/components/EventApp";
 import { getCachedPublicData } from "@/lib/data";
@@ -29,6 +31,10 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ p
   const params = await searchParams;
   if (params.preview === "instagram" && params.test === "1") return <EventApp initialData={instagramTestData()} />;
   if (params.preview === "instagram") return <EventApp initialData={instagramPreviewData()} />;
+  if (params.admin !== "1") {
+    const phase = await getWishPublication().catch(() => null);
+    if (phase?.state === "open") redirect("/wish-tree");
+  }
   const initialData = await getCachedPublicData() as PublicData;
   return <EventApp initialData={initialData} initialAdminOpen={params.admin === "1"} />;
 }

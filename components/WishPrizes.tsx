@@ -7,11 +7,11 @@ import { defaultWishPrizes, type WishDraw, type WishPrize } from "@/lib/wish-gar
 type Settings = { prizes: WishPrize[]; result: WishDraw | null };
 const money = (value: number) => value.toLocaleString("ko-KR") + "원";
 
-async function request(body?: object, signal?: AbortSignal) {
+async function request(mode: "test" | "live", body?: object, signal?: AbortSignal) {
   const user = getFirebaseAuth().currentUser;
   if (!user) throw new Error("관리자 로그인이 필요해요.");
   const token = await user.getIdToken();
-  const response = await fetch("/api/wish-tree-test/admin", {
+  const response = await fetch("/api/wish-tree-test/admin?mode=" + mode, {
     method: body ? "POST" : "GET",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: body && JSON.stringify(body),
@@ -23,7 +23,7 @@ async function request(body?: object, signal?: AbortSignal) {
   return data as Settings;
 }
 
-export default function WishPrizes({ tab }: { tab: "prizes" | "results" }) {
+export default function WishPrizes({ tab, mode }: { tab: "prizes" | "results"; mode: "test" | "live" }) {
   const [prizes, setPrizes] = useState(defaultWishPrizes);
   const [result, setResult] = useState<WishDraw | null>(null);
   const [loading, setLoading] = useState(true);
@@ -34,7 +34,7 @@ export default function WishPrizes({ tab }: { tab: "prizes" | "results" }) {
 
   useEffect(() => {
     const controller = new AbortController();
-    request(undefined, controller.signal).then(data => {
+    request(mode, undefined, controller.signal).then(data => {
       if (controller.signal.aborted) return;
       setPrizes(data.prizes);
       setResult(data.result);
@@ -45,13 +45,13 @@ export default function WishPrizes({ tab }: { tab: "prizes" | "results" }) {
       if (!controller.signal.aborted) setLoading(false);
     });
     return () => controller.abort();
-  }, [reload]);
+  }, [mode, reload]);
 
   async function submit(action: "save" | "draw") {
     setLoading(true);
     setNotice("");
     try {
-      const data = await request(action === "save" ? { action, prizes } : { action });
+      const data = await request(mode, action === "save" ? { action, prizes } : { action });
       if (action === "save") setPrizes(data.prizes);
       else setResult(data.result);
       setConfirmDraw(false);

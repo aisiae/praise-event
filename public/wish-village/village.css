@@ -95,8 +95,13 @@ h1 { color:#6ee7b7; font-size:16px; font-weight:900; letter-spacing:-.035em; }
 #edit-wish { width:100%; margin-bottom:8px; }
 .error { margin-top:10px; color:#fecaca; }
 @media (max-width:680px),(pointer:coarse) {
-    :root { --controls-bottom:calc(24px + env(safe-area-inset-bottom, 0px)); }
-    .hud { top:max(9px,env(safe-area-inset-top)); left:9px; width:min(330px,calc(100% - 101px)); gap:5px; }
+    :root {
+        --controls-bottom:max(12px, env(safe-area-inset-bottom, 0px));
+        --edge-left:max(10px, env(safe-area-inset-left, 0px));
+        --edge-right:max(10px, env(safe-area-inset-right, 0px));
+        --stick-size:clamp(58px, 26dvh, 92px);
+    }
+    .hud { top:max(9px,env(safe-area-inset-top)); left:var(--edge-left); width:min(330px,calc(100% - var(--edge-left) - var(--edge-right) - 92px)); gap:5px; }
     .hud-card { padding:9px; }
     h1 { font-size:12px; }
     .santa { font-size:17px; }
@@ -107,12 +112,20 @@ h1 { color:#6ee7b7; font-size:16px; font-weight:900; letter-spacing:-.035em; }
     .stats div { padding:4px; gap:3px; }
     .desktop-help,.movement,.action-key { display:none; }
     .mobile-help { display:inline; }
-    .zoom { top:max(9px,env(safe-area-inset-top)); right:9px; }
+    .zoom { top:max(9px,env(safe-area-inset-top)); right:var(--edge-right); }
     .zoom .btn-control { width:39px; height:39px; }
-    .joystick { position:fixed; left:max(13px,env(safe-area-inset-left)); bottom:var(--controls-bottom); display:grid; place-items:center; width:92px; height:92px; border-radius:50%; touch-action:none; user-select:none; }
+    .joystick { position:fixed; left:var(--edge-left); bottom:var(--controls-bottom); display:grid; place-items:center; width:var(--stick-size); height:var(--stick-size); border-radius:50%; touch-action:none; user-select:none; }
     .joystick span { display:grid; place-items:center; width:42px; height:42px; border-radius:50%; color:#18354c; background:#ebf6fc; font-size:21px; transform:translate(var(--dx,0),var(--dy,0)); pointer-events:none; }
-    .shortcuts { right:max(13px,env(safe-area-inset-right)); bottom:var(--controls-bottom); max-width:calc(100% - 130px); }
-    .shortcuts button { max-width:100%; overflow-wrap:anywhere; }
+    .shortcuts { right:var(--edge-right); bottom:var(--controls-bottom); max-width:calc(100% - var(--edge-left) - var(--edge-right) - var(--stick-size) - 16px); }
+    .shortcuts button { min-width:0; max-width:100%; overflow-wrap:anywhere; white-space:normal; }
+    .modal input,.modal textarea { font-size:16px; }
     .shortcut { padding:6px 9px; min-height:34px; font-size:11px; }
     #toast-container { bottom:calc(var(--controls-bottom) + 100px); }
+}
+
+@media (max-height:430px) and (pointer:coarse), (max-height:430px) and (max-width:980px) {
+    .hud .help { display:none; }
+    .shortcuts { grid-template-columns:repeat(2, minmax(0, max-content)); }
+    .shortcuts .action { min-height:34px; padding:6px 9px; font-size:11px; }
+    #toast-container { bottom:calc(var(--controls-bottom, 12px) + 76px); }
 }
