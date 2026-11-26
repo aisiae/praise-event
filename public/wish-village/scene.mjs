@@ -184,9 +184,10 @@ export function createVillage(container, { onPick, onNear, overview }) {
         scene.add(lamp);
     }
     
-    function buildSnowman(sx, sz, rotY = 0) {
+    function buildSnowman(sx, sz, scale, rotY) {
         const snowman = new THREE.Group();
         snowman.position.set(sx, 0, sz);
+        snowman.scale.setScalar(scale);
         snowman.rotation.y = rotY;
     
         const snowMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.85 });
@@ -371,8 +372,19 @@ export function createVillage(container, { onPick, onNear, overview }) {
         lanternCoords.forEach(([x, z]) => buildNordicStreetLamp(x, z, true));
     
         // 3-6. 산타 빌리지 귀여운 소품 (눈사람 & 산타 우체통 - 아치 문 제거 후 깔끔하게 배치)
-        buildSnowman(-2.8, 12.6, 0.35);
-        buildSnowman(8.8, -12.8, -0.45);
+        // Pick one clear spot in each area so the snowmen stay spread out.
+        const snowmanPlacements = [
+            { scale: 0.62, spots: [[-21, -23], [-19, -18]] },
+            { scale: 1.16, spots: [[10, -18], [19, -17]] },
+            { scale: 0.81, spots: [[33, -6], [34, -3.5]] },
+            { scale: 0.94, spots: [[-19, 20], [-22, 25]] },
+            { scale: 1.35, spots: [[-8, 14], [-11, 18]] },
+            { scale: 0.72, spots: [[21, 26], [18, 24]] },
+        ];
+        snowmanPlacements.forEach(({ scale, spots }) => {
+            const [x, z] = spots[Math.floor(Math.random() * spots.length)];
+            buildSnowman(x, z, scale, (Math.random() - 0.5) * 0.9);
+        });
         buildSantaMailbox(2.6, 12.6);
     
         // 3-7. 북유럽 통나무 목책 울타리 & 자연스러운 설산 파노라마 (배경 나무 제거)
