@@ -2,8 +2,9 @@
 export const shapedOrnamentLimit = 50;
 
 const gardenBounds = { side: 37, back: -29, front: 35 };
+const cabinPosition = { x: -30.5, z: -24.5 };
 const plotPositions = [
-    [-34, -24], [-25, -26], [-15, -25], [-5, -24], [5, -25], [15, -23], [24, -26], [34, -24],
+    [-31, -6], [-13, -15], [-15, -25], [-5, -24], [5, -25], [15, -23], [24, -26], [34, -24],
     [-35, -13], [-26, -10], [-18, -8], [-7, -6], [5, -9], [14, -12], [24, -9], [34, -13],
     [-33, 5], [-24, 8], [-15, 5], [-5, 7], [6, 6], [15, 8], [25, 5], [35, 8],
     [-35, 17], [-26, 19], [-17, 16], [-7, 19], [5, 17], [15, 19], [24, 16], [33, 20],
@@ -357,7 +358,7 @@ export function createVillage(container, { onPick, onNear, overview }) {
         });
     
         // 3-4. 굴뚝이 있는 북유럽 산타 통나무 집 (Santa's Cozy Chimney House)
-        buildSantaLogCabin(-9.5, -15.5);
+        buildSantaLogCabin(cabinPosition.x, cabinPosition.z);
     
         // 3-5. 북유럽 클래식 스트리트 가로등 (따뜻한 호박빛 조명)
         const lanternCoords = [[2.2, -8.5], [-2.2, -2.5], [2.2, 5.6], [-2.2, 12.7], [-11.9, 2.3]];
