@@ -361,7 +361,13 @@ export function createVillage(container, { onPick, onNear, overview }) {
         buildSantaLogCabin(cabinPosition.x, cabinPosition.z);
     
         // 3-5. 북유럽 클래식 스트리트 가로등 (따뜻한 호박빛 조명)
-        const lanternCoords = [[2.2, -8.5], [-2.2, -2.5], [2.2, 5.6], [-2.2, 12.7], [-11.9, 2.3]];
+        const lanternCoords = [
+            [-23, -18], [2.2, -21], [28, -19],
+            [-22, -7], [-2.2, -10], [29, -7],
+            [-29, 2.5], [2.2, 2.5], [29, 2.5],
+            [-30, 13], [-2.2, 15.5], [28, 13],
+            [-29, 25], [2.2, 27], [29, 26],
+        ];
         lanternCoords.forEach(([x, z]) => buildNordicStreetLamp(x, z, true));
     
         // 3-6. 산타 빌리지 귀여운 소품 (눈사람 & 산타 우체통 - 아치 문 제거 후 깔끔하게 배치)
