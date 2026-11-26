@@ -354,7 +354,7 @@ function startAdminTest() {
     if (entry.open) entry.close();
     setSceneEnabled();
     syncView();
-    village.focus(testTreeSlot);
+    village.resetView();
 }
 
 window.addEventListener('message', event => {
@@ -374,7 +374,7 @@ window.addEventListener('message', event => {
 
 try {
     await import('./three-r128.min.js');
-    village = createVillage(byId('canvas-container'), { onPick: pick, onNear: showNearby });
+    village = createVillage(byId('canvas-container'), { onPick: pick, onNear: showNearby, overview: overviewRequested });
 } catch (error) {
     console.error(error);
     byId('loading-error').hidden = false;

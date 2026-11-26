@@ -1,9 +1,28 @@
 /* The scene geometry, materials, lighting and orbit camera come from the supplied Santa Village design. */
 export const shapedOrnamentLimit = 50;
 
-export function createVillage(container, { onPick, onNear }) {
+const gardenBounds = { side: 37, back: -29, front: 35 };
+const plotPositions = [
+    [-34, -24], [-25, -26], [-15, -25], [-5, -24], [5, -25], [15, -23], [24, -26], [34, -24],
+    [-35, -13], [-26, -10], [-18, -8], [-7, -6], [5, -9], [14, -12], [24, -9], [34, -13],
+    [-33, 5], [-24, 8], [-15, 5], [-5, 7], [6, 6], [15, 8], [25, 5], [35, 8],
+    [-35, 17], [-26, 19], [-17, 16], [-7, 19], [5, 17], [15, 19], [24, 16], [33, 20],
+    [-34, 30], [-24, 32], [-15, 27], [-5, 31], [6, 30], [16, 28], [25, 32], [35, 30],
+];
+
+export function createVillage(container, { onPick, onNear, overview }) {
     const THREE = window.THREE;
     if (!THREE) throw new Error("Three.js failed to load");
+
+    // Assign display positions once per view. Array indices remain the stored plot IDs.
+    // The admin overview uses a fixed layout so it can be consulted across visits.
+    const positions = [...plotPositions];
+    if (!overview) {
+        for (let index = positions.length - 1; index > 0; index--) {
+            const other = Math.floor(Math.random() * (index + 1));
+            [positions[index], positions[other]] = [positions[other], positions[index]];
+        }
+    }
 
     const treeSlots = [];
     const plantedTrees = new Map();
@@ -11,10 +30,9 @@ export function createVillage(container, { onPick, onNear }) {
     const moveKeys = { up: false, down: false, left: false, right: false };
     const stick = { x: 0, z: 0 };
     let enabled = false;
-    // Keep the cabin roof and the crossing visible in the opening view.
-    let cameraZoom = 22;
-    let cameraAngle = 0.26;
-    let cameraPitch = 0.45;
+    let cameraZoom;
+    let cameraAngle;
+    let cameraPitch;
     let haloTexture;
 
     const scene = new THREE.Scene();
@@ -45,7 +63,7 @@ export function createVillage(container, { onPick, onNear }) {
     dirLight.shadow.mapSize.height = 2048;
     dirLight.shadow.camera.near = 1;
     dirLight.shadow.camera.far = 90;
-    const d = 36;
+    const d = 49;
     dirLight.shadow.camera.left = -d;
     dirLight.shadow.camera.right = d;
     dirLight.shadow.camera.top = d;
@@ -281,44 +299,17 @@ export function createVillage(container, { onPick, onNear }) {
         const woodPlankMat = new THREE.MeshStandardMaterial({ color: 0x7c4a2d, roughness: 0.75 });
         const plankSnowMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.9 });
     
-        for (let z = -10.5; z <= 22; z += 1.6) {
+        for (let z = gardenBounds.back + 1; z < gardenBounds.front; z += 1.6) {
             createWoodenPlank(0, z, 2.8, 1.15, pathGroup, woodPlankMat, plankSnowMat);
         }
-        for (let x = -22.7; x <= 22.7; x += 1.6) {
+        for (let x = -gardenBounds.side + 1; x < gardenBounds.side; x += 1.6) {
             if (Math.abs(x) < 1.5) continue;
             createWoodenPlank(x, 0.5, 1.15, 2.6, pathGroup, woodPlankMat, plankSnowMat);
         }
         scene.add(pathGroup);
     
         // 3-3. 자연스럽게 흩어져 배치된 소원 나무 심기 구역 (유기적 배치)
-        const naturalSpots = [
-            { key: 'spot_1', x: -7.8, z: -7.5 },
-            { key: 'spot_2', x: 7.4, z: -8.2 },
-            { key: 'spot_3', x: -10.8, z: 5.2 },
-            { key: 'spot_4', x: 9.8, z: 7.4 },
-            { key: 'spot_5', x: -4.2, z: 10.6 },
-            { key: 'spot_6', x: -3.8, z: -5.4 },
-            { key: 'spot_7', x: 3.6, z: -4.8 },
-            { key: 'spot_8', x: 11.5, z: -4.2 },
-            { key: 'spot_9', x: -12.6, z: -3.6 },
-            { key: 'spot_10', x: -6.4, z: 4.2 },
-            { key: 'spot_11', x: 4.5, z: 4.6 },
-            { key: 'spot_12', x: 12.2, z: 3.8 },
-            { key: 'spot_13', x: 4.8, z: 11.2 },
-            { key: 'spot_14', x: -8.8, z: 9.8 },
-            { key: 'spot_15', x: 2.8, z: -10.8 },
-            { key: 'spot_16', x: 10.6, z: -11.4 },
-            ...[
-                [-17.0, -3.7], [-21.8, -5.8], [-15.0, -9.5], [-21.0, -12.4],
-                [15.2, -5.5], [20.3, -4.3], [16.4, -10.6], [21.9, -12.0],
-                [-16.4, 4.7], [-21.7, 7.4], [-14.1, 10.1], [-19.2, 13.1],
-                [16.6, 3.7], [21.3, 6.4], [14.6, 9.2], [20.8, 12.0],
-                [-9.7, 15.0], [-5.0, 16.3], [-15.2, 17.6], [-19.6, 20.1],
-                [4.6, 16.4], [9.4, 13.5], [13.4, 17.4], [18.7, 19.6]
-            ].map(([x, z], index) => ({ key: 'spot_' + (index + 17), x, z }))
-        ];
-    
-        naturalSpots.forEach(({ key, x: wx, z: wz }) => {
+        positions.forEach(([wx, wz]) => {
             const slotGroup = new THREE.Group();
             slotGroup.position.set(wx, 0.02, wz);
     
@@ -354,17 +345,14 @@ export function createVillage(container, { onPick, onNear }) {
             const hitMat = new THREE.MeshBasicMaterial({ visible: false });
             const hitMesh = new THREE.Mesh(hitGeo, hitMat);
             hitMesh.position.set(wx, 0.6, wz);
-            hitMesh.userData = { type: 'slot', slotKey: key };
             scene.add(hitMesh);
     
             treeSlots.push({
-                key,
                 x: wx,
                 z: wz,
                 group: slotGroup,
                 ringMesh,
-                hitMesh,
-                occupiedBy: null
+                hitMesh
             });
         });
     
@@ -547,21 +535,22 @@ export function createVillage(container, { onPick, onNear }) {
         // 북유럽 통나무 목책 울타리 (우측 외곽)
         const logMat = new THREE.MeshStandardMaterial({ color: 0x6b3e26, roughness: 0.85 });
         const snowMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.9 });
-        for (let z = -14; z <= 22; z += 3.2) {
+        const fenceX = gardenBounds.side + 1;
+        for (let z = gardenBounds.back; z <= gardenBounds.front; z += 3.2) {
             const post = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.18, 1.5, 12), logMat);
-            post.position.set(25, 0.75, z);
+            post.position.set(fenceX, 0.75, z);
             post.castShadow = true;
             scene.add(post);
     
             const capSnow = new THREE.Mesh(new THREE.SphereGeometry(0.17, 12, 12), snowMat);
-            capSnow.position.set(25, 1.52, z);
+            capSnow.position.set(fenceX, 1.52, z);
             scene.add(capSnow);
     
-            if (z + 3.2 <= 22) {
+            if (z + 3.2 <= gardenBounds.front) {
                 [0.55, 1.1].forEach(ry => {
                     const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 3.2, 10), logMat);
                     rail.rotation.x = Math.PI / 2;
-                    rail.position.set(25, ry, z + 1.6);
+                    rail.position.set(fenceX, ry, z + 1.6);
                     scene.add(rail);
                 });
             }
@@ -1073,7 +1062,6 @@ export function createVillage(container, { onPick, onNear }) {
     buildEnvironment();
     treeSlots.forEach((slot, index) => { slot.hitMesh.userData.plot = index; });
     const player = createPlayerCharacter();
-    player.position.set(0, 0, 8.5);
     scene.add(player);
 
     function nearbySlot() {
@@ -1092,7 +1080,7 @@ export function createVillage(container, { onPick, onNear }) {
     const ray = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
     const canvas = renderer.domElement;
-    const zoom = amount => { cameraZoom = Math.min(34, Math.max(7, cameraZoom + amount)); };
+    const zoom = amount => { cameraZoom = Math.min(52, Math.max(7, cameraZoom + amount)); };
     function pick(event) {
         const bounds = canvas.getBoundingClientRect();
         pointer.set((event.clientX - bounds.left) / bounds.width * 2 - 1, -(event.clientY - bounds.top) / bounds.height * 2 + 1);
@@ -1180,8 +1168,8 @@ export function createVillage(container, { onPick, onNear }) {
             const worldDZ = -moveX * sinA + moveZ * cosA;
     
             const speed = 6.2 * delta;
-            player.position.x = Math.max(-23.7, Math.min(23.7, player.position.x + worldDX * speed));
-            player.position.z = Math.max(-13.7, Math.min(22, player.position.z + worldDZ * speed));
+            player.position.x = Math.max(-gardenBounds.side, Math.min(gardenBounds.side, player.position.x + worldDX * speed));
+            player.position.z = Math.max(gardenBounds.back, Math.min(gardenBounds.front, player.position.z + worldDZ * speed));
     
             // 진행 방향으로 부드럽게 회전
             const targetRot = Math.atan2(worldDX, worldDZ);
@@ -1263,9 +1251,17 @@ export function createVillage(container, { onPick, onNear }) {
         renderer.render(scene, camera);
     }
 
-    // Set the opening view before the camera starts following the player.
-    camera.position.set(Math.sin(cameraAngle) * Math.cos(cameraPitch) * cameraZoom,
-        Math.sin(cameraPitch) * cameraZoom, player.position.z + Math.cos(cameraAngle) * Math.cos(cameraPitch) * cameraZoom);
+    function resetView() {
+        player.position.set(0, 0, 16);
+        cameraZoom = 34;
+        cameraAngle = 0.18;
+        cameraPitch = 0.53;
+        const distance = Math.cos(cameraPitch) * cameraZoom;
+        camera.position.set(Math.sin(cameraAngle) * distance, Math.sin(cameraPitch) * cameraZoom,
+            player.position.z + Math.cos(cameraAngle) * distance);
+    }
+
+    resetView();
     animate();
 
     return {
@@ -1281,10 +1277,11 @@ export function createVillage(container, { onPick, onNear }) {
         setDirection(direction, value) { moveKeys[direction] = value; },
         setStick(x, z) { stick.x = x; stick.z = z; },
         zoom,
+        resetView,
         focus(slot) {
             const plot = treeSlots[slot];
             if (!plot) return;
-            player.position.set(plot.x, 0, Math.min(22, plot.z + 1.8));
+            player.position.set(plot.x, 0, Math.min(gardenBounds.front, plot.z + 1.8));
             cameraZoom = Math.max(14, (plantedTrees.get(slot)?.meshGroup.userData.height ?? 0) * 3.2);
         },
     };
